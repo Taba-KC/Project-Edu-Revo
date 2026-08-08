@@ -1,0 +1,1 @@
+ALTER TABLE "schools" ALTER COLUMN "code" DROP NOT NULL;

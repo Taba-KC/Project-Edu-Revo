@@ -1,3 +1,6 @@
+export * from './provinces';
+export * from './districts';
+export * from './circuits';
 export * from './schools';
 export * from './grades';
 export * from './subjects';

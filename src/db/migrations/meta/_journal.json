@@ -8,6 +8,20 @@
       "when": 1786076481414,
       "tag": "0000_material_karnak",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786144550350,
+      "tag": "0001_first_gorgon",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786145744984,
+      "tag": "0002_far_silk_fever",
+      "breakpoints": true
     }
   ]
 }
