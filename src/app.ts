@@ -8,6 +8,10 @@ import streamsRouter from './routes/streams';
 import classesRouter from './routes/classes';
 import peopleRouter from './routes/people';
 import learnersRouter from './routes/learners';
+import chaptersRouter from './routes/chapters';
+import conceptsRouter from './routes/concepts';
+import lessonsRouter from './routes/lessons';
+import homeworkRouter from './routes/homework';
 
 const app = express();
 
@@ -21,5 +25,9 @@ app.use(streamsRouter);
 app.use(classesRouter);
 app.use(peopleRouter);
 app.use(learnersRouter);
+app.use(chaptersRouter);
+app.use(conceptsRouter);
+app.use(lessonsRouter);
+app.use(homeworkRouter);
 
 export default app;

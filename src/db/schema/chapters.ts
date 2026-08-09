@@ -5,7 +5,7 @@ import { people } from './people';
 export const chapters = pgTable('chapters', {
   id:             serial('id').primaryKey(),
   classSubjectId: integer('class_subject_id').notNull().references(() => classSubjects.id),
-  personId:       integer('person_id').notNull().references(() => people.id),
+  personId:       integer('person_id').references(() => people.id),
   name:           text('name').notNull(),
   orderIndex:     integer('order_index').notNull(),
   label:          text('label'),
