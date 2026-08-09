@@ -18,7 +18,11 @@ export async function createHomework(data: {
 
 export async function getHomeworkByLesson(lessonId: number) {
   const [hw] = await db.select().from(homework).where(eq(homework.lessonId, lessonId));
-  return hw ?? null;
+  if (!hw) return null;
+  const questionList = await db.select().from(questions)
+    .where(eq(questions.homeworkId, hw.id))
+    .orderBy(questions.orderIndex);
+  return { homework: hw, questions: questionList };
 }
 
 export async function addQuestion(data: {

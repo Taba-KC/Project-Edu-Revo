@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, date, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, serial, integer, text, date, timestamp } from 'drizzle-orm/pg-core';
 import { chapters } from './chapters';
 import { classSubjects } from './classSubjects';
 
@@ -7,6 +7,7 @@ export const lessons = pgTable('lessons', {
   chapterId:      integer('chapter_id').notNull().references(() => chapters.id),
   classSubjectId: integer('class_subject_id').notNull().references(() => classSubjects.id),
   date:           date('date').notNull(),
+  status:         text('status').notNull().default('planned'),
   createdAt:      timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -16,31 +17,18 @@ export const lessons = pgTable('lessons', {
 /** NOTES */
 
 /*
- * A lesson is a confirmed teaching event. 
- * As the specification states, a lesson record is only created once the teacher completes the confirmation step — not when they save a plan. 
- * It records that on a specific date, a specific chapter was taught to a specific class in a specific subject.
+ * The lessonPreviewFeedback table references a lessonId — meaning a lesson record must exist before a learner can preview it. 
+ * But in Session 7, we built lessons as confirmed teaching events — a lesson is only created after teaching happens.
 
-   What each column does:
+ * That creates a gap: if a lesson only exists after it is taught, there is nothing for a learner to preview beforehand.
 
- * chapterId — the chapter this lesson belongs to. 
-    - Determines which concepts were available to teach.
- * classSubjectId — the subject-in-a-class this lesson belongs to. 
-    - Together with chapterId, this fully locates the lesson in the curriculum hierarchy.
- * date — the date the lesson took place. 
-    - We use date rather than timestamp here because a lesson happened on a day, not at a specific time down to the second.
- * createdAt — auto-filled timestamp recording when the confirmation was submitted.
+ * The fix: lessons need two states — planned and confirmed.
 
-    Why both chapterId and classSubjectId:
+    - Teacher plans a lesson — creates a lesson record with a future date and the concepts they intend to cover. Status: planned. 
+        - Learners can now see and preview it.
+    - Teacher teaches the lesson, then confirms it — updates the status to confirmed and adjusts which concepts were actually covered (some may have been skipped or added).
+    - Learners give post-lesson feedback on the confirmed concepts.
+ * This requires a small schema change — adding a status column to the lessons table with values planned or confirmed.
 
- * You might notice that classSubjectId could be derived by going through chapterId — a chapter already knows its classSubjectId. 
-   - So why store it again on the lesson?
-
-    Two reasons. 
- * First, querying is simpler and faster — to fetch all lessons for a subject-in-a-class, you query directly on classSubjectId without joining through chapters. 
- * Second, it makes the lesson record self-contained and explicit — it says clearly "this lesson belongs to this subject in this class" without requiring extra joins to establish that fact.
-
-   Notice what is not here — the concepts taught:
- * A lesson records which concepts were confirmed taught, but those are not columns on this table. 
- * A lesson can cover multiple concepts, and a column cannot hold a list. 
- * That relationship needs its own table — lessonConcepts — which we will create next.
+ * It also means the lesson creation route from Session 7 becomes the planning step, and we add a new confirm step.
  */
