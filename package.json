@@ -24,6 +24,7 @@
   },
   "homepage": "https://github.com/Taba-KC/Project-Edu-Revo#readme",
   "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
     "@types/express": "^5.0.6",
     "@types/node": "^26.1.2",
     "@types/pg": "^8.20.4",
@@ -32,6 +33,7 @@
     "typescript": "^7.0.2"
   },
   "dependencies": {
+    "bcrypt": "^6.0.0",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
@@ -41,6 +43,7 @@
   "allowScripts": {
     "esbuild@0.28.1": true,
     "esbuild@0.18.20": true,
-    "esbuild@0.25.12": true
+    "esbuild@0.25.12": true,
+    "bcrypt@6.0.0": true
   }
 }

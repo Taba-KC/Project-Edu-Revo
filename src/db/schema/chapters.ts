@@ -1,11 +1,11 @@
 import { pgTable, serial, integer, text, timestamp } from 'drizzle-orm/pg-core';
 import { classSubjects } from './classSubjects';
-import { teachers } from './teachers';
+import { people } from './people';
 
 export const chapters = pgTable('chapters', {
   id:             serial('id').primaryKey(),
   classSubjectId: integer('class_subject_id').notNull().references(() => classSubjects.id),
-  teacherId:      integer('teacher_id').notNull().references(() => teachers.id),
+  personId:       integer('person_id').notNull().references(() => people.id),
   name:           text('name').notNull(),
   orderIndex:     integer('order_index').notNull(),
   label:          text('label'),

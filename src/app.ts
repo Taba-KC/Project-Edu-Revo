@@ -6,6 +6,8 @@ import gradesRouter from './routes/grades';
 import subjectsRouter from './routes/subjects';
 import streamsRouter from './routes/streams';
 import classesRouter from './routes/classes';
+import peopleRouter from './routes/people';
+import learnersRouter from './routes/learners';
 
 const app = express();
 
@@ -17,5 +19,7 @@ app.use(gradesRouter);
 app.use(subjectsRouter);
 app.use(streamsRouter);
 app.use(classesRouter);
+app.use(peopleRouter);
+app.use(learnersRouter);
 
 export default app;

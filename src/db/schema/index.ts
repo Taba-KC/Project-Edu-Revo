@@ -8,7 +8,7 @@ export * from './streams';
 export * from './streamSubjects';
 export * from './classes';
 export * from './classSubjects';
-export * from './teachers';
+export * from './people';
 export * from './learners';
 export * from './chapters';
 export * from './concepts';
