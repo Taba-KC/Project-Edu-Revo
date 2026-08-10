@@ -39,3 +39,30 @@ export async function completeLearnerOnboarding(learnerId: number, username: str
     .returning();
   return updated;
 }
+
+export async function bulkAddLearners(
+  learners: { title: string; firstName: string; surname: string; admissionNumber: string }[],
+  schoolId: number,
+  classId: number,
+) {
+  const succeeded: number[] = [];
+  const errors: { row: number; admissionNumber: string; reason: string }[] = [];
+
+  for (let i = 0; i < learners.length; i++) {
+    const row = learners[i];
+    try {
+      const learner = await addLearner({ ...row, schoolId, classId });
+      succeeded.push(learner.id);
+    } catch (err: any) {
+      const isDuplicate =
+        err.cause?.code === '23505' ||
+        (err.cause?.message ?? '').toLowerCase().includes('duplicate key');
+      const reason = isDuplicate
+        ? 'Admission number already exists for this school'
+        : 'Failed to import row';
+      errors.push({ row: i + 2, admissionNumber: row.admissionNumber, reason });
+    }
+  }
+
+  return { succeeded: succeeded.length, failed: errors.length, errors };
+}

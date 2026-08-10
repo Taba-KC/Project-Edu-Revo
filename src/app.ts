@@ -14,6 +14,7 @@ import lessonsRouter from './routes/lessons';
 import homeworkRouter from './routes/homework';
 import learnerFeedbackRouter from './routes/learnerFeedback';
 import authRouter from './routes/auth';
+import learnerImportRouter from './routes/learnerImport';
 
 const app = express();
 
@@ -33,5 +34,6 @@ app.use(conceptsRouter);
 app.use(lessonsRouter);
 app.use(homeworkRouter);
 app.use(learnerFeedbackRouter);
+app.use(learnerImportRouter);
 
 export default app;
