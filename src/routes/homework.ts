@@ -6,6 +6,7 @@ import {
   addQuestion,
   getQuestionsByHomework,
 } from '../services/homeworkService';
+import { requireAuth, requirePerson } from '../middleware/auth';
 
 const router = Router();
 
@@ -23,7 +24,7 @@ const addQuestionSchema = z.object({
 });
 
 // Create a homework set for a lesson
-router.post('/lessons/:lessonId/homework', async (req, res) => {
+router.post('/lessons/:lessonId/homework', requireAuth, requirePerson, async (req, res) => {
   const lessonId = parseInt(req.params.lessonId as string);
 
   const result = createHomeworkSchema.safeParse(req.body);
@@ -34,7 +35,7 @@ router.post('/lessons/:lessonId/homework', async (req, res) => {
 });
 
 // Get the homework set for a lesson
-router.get('/lessons/:lessonId/homework', async (req, res) => {
+router.get('/lessons/:lessonId/homework', requireAuth, async (req, res) => {
   const lessonId = parseInt(req.params.lessonId as string);
   const hw = await getHomeworkByLesson(lessonId);
   if (!hw) return res.status(404).json({ error: 'No homework found for this lesson' });
@@ -42,7 +43,7 @@ router.get('/lessons/:lessonId/homework', async (req, res) => {
 });
 
 // Add a question to a homework set
-router.post('/homework/:homeworkId/questions', async (req, res) => {
+router.post('/homework/:homeworkId/questions', requireAuth, requirePerson, async (req, res) => {
   const homeworkId = parseInt(req.params.homeworkId as string);
 
   const result = addQuestionSchema.safeParse(req.body);
@@ -53,7 +54,7 @@ router.post('/homework/:homeworkId/questions', async (req, res) => {
 });
 
 // List all questions in a homework set
-router.get('/homework/:homeworkId/questions', async (req, res) => {
+router.get('/homework/:homeworkId/questions', requireAuth, requirePerson, async (req, res) => {
   const homeworkId = parseInt(req.params.homeworkId as string);
   const questionList = await getQuestionsByHomework(homeworkId);
   return res.json(questionList);

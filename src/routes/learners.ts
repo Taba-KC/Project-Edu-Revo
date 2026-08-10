@@ -8,6 +8,7 @@ import {
   completeLearnerOnboarding,
 } from '../services/learnerService';
 import bcrypt from 'bcrypt';
+import { requireAuth, requirePerson } from '../middleware/auth';
 
 const router = Router();
 
@@ -28,7 +29,7 @@ const onboardingSchema = z.object({
 });
 
 // Add a learner to a class
-router.post('/schools/:schoolId/learners', async (req, res) => {
+router.post('/schools/:schoolId/learners', requireAuth, requirePerson, async (req, res) => {
   const schoolId = parseInt(req.params.schoolId as string);
   const school = await getSchoolById(schoolId);
   if (!school) return res.status(404).json({ error: 'School not found' });
@@ -41,7 +42,7 @@ router.post('/schools/:schoolId/learners', async (req, res) => {
 });
 
 // List all learners in a class
-router.get('/schools/:schoolId/classes/:classId/learners', async (req, res) => {
+router.get('/schools/:schoolId/classes/:classId/learners', requireAuth, requirePerson, async (req, res) => {
   const schoolId = parseInt(req.params.schoolId as string);
   const classId = parseInt(req.params.classId as string);
 

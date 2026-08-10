@@ -43,6 +43,13 @@
       "when": 1786290224274,
       "tag": "0005_salty_banshee",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786385728675,
+      "tag": "0006_harsh_darkhawk",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { createChapter, assignPersonToChapter, getChaptersByClassSubject } from '../services/chapterService';
+import { requireAuth, requirePerson } from '../middleware/auth';
 
 const router = Router();
 
@@ -15,7 +16,7 @@ const assignPersonSchema = z.object({
 });
 
 // Add a chapter to a class-subject
-router.post('/class-subjects/:classSubjectId/chapters', async (req, res) => {
+router.post('/class-subjects/:classSubjectId/chapters', requireAuth, requirePerson, async (req, res) => {
   const classSubjectId = parseInt(req.params.classSubjectId as string);
 
   const result = createChapterSchema.safeParse(req.body);
@@ -26,14 +27,14 @@ router.post('/class-subjects/:classSubjectId/chapters', async (req, res) => {
 });
 
 // List all chapters in a class-subject
-router.get('/class-subjects/:classSubjectId/chapters', async (req, res) => {
+router.get('/class-subjects/:classSubjectId/chapters', requireAuth, requirePerson, async (req, res) => {
   const classSubjectId = parseInt(req.params.classSubjectId as string);
   const chapterList = await getChaptersByClassSubject(classSubjectId);
   return res.json(chapterList);
 });
 
 // Assign a person to a chapter
-router.patch('/chapters/:chapterId/assign', async (req, res) => {
+router.patch('/chapters/:chapterId/assign', requireAuth, requirePerson, async (req, res) => {
   const chapterId = parseInt(req.params.chapterId as string);
 
   const result = assignPersonSchema.safeParse(req.body);

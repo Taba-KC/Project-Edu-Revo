@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { createConcept, getConceptsByChapter } from '../services/conceptService';
+import { requireAuth, requirePerson } from '../middleware/auth';
 
 const router = Router();
 
@@ -10,7 +11,7 @@ const createConceptSchema = z.object({
 });
 
 // Add a concept to a chapter
-router.post('/chapters/:chapterId/concepts', async (req, res) => {
+router.post('/chapters/:chapterId/concepts', requireAuth, requirePerson, async (req, res) => {
   const chapterId = parseInt(req.params.chapterId as string);
 
   const result = createConceptSchema.safeParse(req.body);
@@ -21,7 +22,7 @@ router.post('/chapters/:chapterId/concepts', async (req, res) => {
 });
 
 // List all concepts in a chapter
-router.get('/chapters/:chapterId/concepts', async (req, res) => {
+router.get('/chapters/:chapterId/concepts', requireAuth, requirePerson, async (req, res) => {
   const chapterId = parseInt(req.params.chapterId as string);
   const conceptList = await getConceptsByChapter(chapterId);
   return res.json(conceptList);

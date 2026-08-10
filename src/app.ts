@@ -13,11 +13,13 @@ import conceptsRouter from './routes/concepts';
 import lessonsRouter from './routes/lessons';
 import homeworkRouter from './routes/homework';
 import learnerFeedbackRouter from './routes/learnerFeedback';
+import authRouter from './routes/auth';
 
 const app = express();
 
 app.use(express.json());
 app.use(requestLogger);
+app.use(authRouter);
 app.use(healthRouter);
 app.use(schoolsRouter);
 app.use(gradesRouter);
