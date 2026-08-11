@@ -20,7 +20,7 @@ export * from './lessonFeedback';
 export * from './questionFeedback';
 export * from './lessonPreviewFeedback';
 export * from './refreshTokens';
-
+export * from './classChapters';
 
 
 /** NOTES */

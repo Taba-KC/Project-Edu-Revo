@@ -1,27 +1,43 @@
 import { db } from '../db';
-import { chapters } from '../db/schema';
-import { eq } from 'drizzle-orm';
+import { chapters, classChapters } from '../db/schema';
+import { eq, and } from 'drizzle-orm';
 
 export async function createChapter(data: {
-  classSubjectId: number;
-  name: string;
-  orderIndex: number;
-  label?: string;
+  subjectId:   number;
+  gradeNumber: number;
+  name:        string;
+  orderIndex:  number;
+  label?:      string;
 }) {
   const [chapter] = await db.insert(chapters).values(data).returning();
   return chapter;
 }
 
-export async function assignPersonToChapter(chapterId: number, personId: number) {
-  const [updated] = await db.update(chapters)
+export async function getChaptersBySubjectGrade(subjectId: number, gradeNumber: number) {
+  return db.select().from(chapters)
+    .where(and(eq(chapters.subjectId, subjectId), eq(chapters.gradeNumber, gradeNumber)))
+    .orderBy(chapters.orderIndex);
+}
+
+export async function assignChapterToClass(classSubjectId: number, chapterId: number) {
+  const [existing] = await db.select().from(classChapters)
+    .where(and(eq(classChapters.classSubjectId, classSubjectId), eq(classChapters.chapterId, chapterId)));
+
+  if (existing) return existing;
+
+  const [classChapter] = await db.insert(classChapters).values({ classSubjectId, chapterId }).returning();
+  return classChapter;
+}
+
+export async function assignPersonToClassChapter(classSubjectId: number, chapterId: number, personId: number) {
+  const [updated] = await db.update(classChapters)
     .set({ personId })
-    .where(eq(chapters.id, chapterId))
+    .where(and(eq(classChapters.classSubjectId, classSubjectId), eq(classChapters.chapterId, chapterId)))
     .returning();
   return updated;
 }
 
-export async function getChaptersByClassSubject(classSubjectId: number) {
-  return db.select().from(chapters)
-    .where(eq(chapters.classSubjectId, classSubjectId))
-    .orderBy(chapters.orderIndex);
+export async function getClassChapters(classSubjectId: number) {
+  return db.select().from(classChapters)
+    .where(eq(classChapters.classSubjectId, classSubjectId));
 }

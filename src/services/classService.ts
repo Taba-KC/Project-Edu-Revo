@@ -1,6 +1,6 @@
 import { db } from '../db';
-import { classes, streamSubjects, classSubjects } from '../db/schema';
-import { eq } from 'drizzle-orm';
+import { classes, streamSubjects, classSubjects, chapters, classChapters, grades } from '../db/schema';
+import { eq, and } from 'drizzle-orm';
 
 export async function createClass(data: { gradeId: number; name: string }) {
   const [cls] = await db.insert(classes).values(data).returning();
@@ -16,10 +16,10 @@ export async function getClassesByGrade(gradeId: number) {
 }
 
 export async function assignStreamToClass(classId: number, streamId: number) {
-  await db
-    .update(classes)
-    .set({ streamId })
-    .where(eq(classes.id, classId));
+  const [cls] = await db.select().from(classes).where(eq(classes.id, classId));
+  const [grade] = await db.select().from(grades).where(eq(grades.id, cls.gradeId));
+
+  await db.update(classes).set({ streamId }).where(eq(classes.id, classId));
 
   const streamSubs = await db
     .select()
@@ -27,12 +27,20 @@ export async function assignStreamToClass(classId: number, streamId: number) {
     .where(eq(streamSubjects.streamId, streamId));
 
   if (streamSubs.length > 0) {
-    await db.insert(classSubjects).values(
-      streamSubs.map(ss => ({
-        classId,
-        subjectId: ss.subjectId,
-      }))
-    );
+    const insertedClassSubjects = await db.insert(classSubjects).values(
+      streamSubs.map(ss => ({ classId, subjectId: ss.subjectId }))
+    ).returning();
+
+    for (const cs of insertedClassSubjects) {
+      const curriculumChapters = await db.select().from(chapters)
+        .where(and(eq(chapters.subjectId, cs.subjectId), eq(chapters.gradeNumber, grade.number)));
+
+      if (curriculumChapters.length > 0) {
+        await db.insert(classChapters).values(
+          curriculumChapters.map(ch => ({ classSubjectId: cs.id, chapterId: ch.id }))
+        );
+      }
+    }
   }
 
   return db.select().from(classes).where(eq(classes.id, classId));
