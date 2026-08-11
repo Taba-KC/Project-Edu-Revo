@@ -16,6 +16,7 @@ import learnerFeedbackRouter from './routes/learnerFeedback';
 import authRouter from './routes/auth';
 import learnerImportRouter from './routes/learnerImport';
 import chapterImportRouter from './routes/chapterImport';
+import announcementsRouter from './routes/announcements';
 
 const app = express();
 
@@ -37,5 +38,6 @@ app.use(homeworkRouter);
 app.use(learnerFeedbackRouter);
 app.use(learnerImportRouter);
 app.use(chapterImportRouter);
+app.use(announcementsRouter);
 
 export default app;

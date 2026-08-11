@@ -21,6 +21,7 @@ export * from './questionFeedback';
 export * from './lessonPreviewFeedback';
 export * from './refreshTokens';
 export * from './classChapters';
+export * from './announcements';
 
 
 /** NOTES */
