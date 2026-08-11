@@ -7,7 +7,7 @@ import {
   assignPersonToClassChapter,
   getClassChapters,
 } from '../services/chapterService';
-import { requireAuth, requirePerson } from '../middleware/auth';
+import { requireAuth, requirePrincipal } from '../middleware/auth';
 
 const router = Router();
 
@@ -25,7 +25,7 @@ const assignPersonSchema = z.object({
   personId: z.number().int().positive(),
 });
 
-router.post('/subjects/:subjectId/grades/:gradeNumber/chapters', requireAuth, requirePerson, async (req, res) => {
+router.post('/subjects/:subjectId/grades/:gradeNumber/chapters', requireAuth, requirePrincipal, async (req, res) => {
   const subjectId   = parseInt(req.params.subjectId as string);
   const gradeNumber = parseInt(req.params.gradeNumber as string);
 
@@ -37,7 +37,7 @@ router.post('/subjects/:subjectId/grades/:gradeNumber/chapters', requireAuth, re
 });
 
 // List all chapters for a subject and grade
-router.get('/subjects/:subjectId/grades/:gradeNumber/chapters', requireAuth, requirePerson, async (req, res) => {
+router.get('/subjects/:subjectId/grades/:gradeNumber/chapters', requireAuth, requirePrincipal, async (req, res) => {
   const subjectId   = parseInt(req.params.subjectId as string);
   const gradeNumber = parseInt(req.params.gradeNumber as string);
 
@@ -46,7 +46,7 @@ router.get('/subjects/:subjectId/grades/:gradeNumber/chapters', requireAuth, req
 });
 
 // Assign a curriculum chapter to a class
-router.post('/class-subjects/:classSubjectId/chapters/assign', requireAuth, requirePerson, async (req, res) => {
+router.post('/class-subjects/:classSubjectId/chapters/assign', requireAuth, requirePrincipal, async (req, res) => {
   const classSubjectId = parseInt(req.params.classSubjectId as string);
 
   const result = assignChapterSchema.safeParse(req.body);
@@ -57,7 +57,7 @@ router.post('/class-subjects/:classSubjectId/chapters/assign', requireAuth, requ
 });
 
 // Assign a person to a chapter for a specific class
-router.patch('/class-subjects/:classSubjectId/chapters/:chapterId/person', requireAuth, requirePerson, async (req, res) => {
+router.patch('/class-subjects/:classSubjectId/chapters/:chapterId/person', requireAuth, requirePrincipal, async (req, res) => {
   const classSubjectId = parseInt(req.params.classSubjectId as string);
   const chapterId      = parseInt(req.params.chapterId as string);
 
@@ -70,7 +70,7 @@ router.patch('/class-subjects/:classSubjectId/chapters/:chapterId/person', requi
 });
 
 // List all chapters assigned to a class
-router.get('/class-subjects/:classSubjectId/chapters', requireAuth, requirePerson, async (req, res) => {
+router.get('/class-subjects/:classSubjectId/chapters', requireAuth, requirePrincipal, async (req, res) => {
   const classSubjectId = parseInt(req.params.classSubjectId as string);
   const classChapterList = await getClassChapters(classSubjectId);
   return res.json(classChapterList);

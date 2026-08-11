@@ -6,7 +6,7 @@ import {
   getLessonsByClassSubject,
   getLessonConcepts,
 } from '../services/lessonService';
-import { requireAuth, requirePerson } from '../middleware/auth';
+import { requireAuth, requireTeacher } from '../middleware/auth';
 
 const router = Router();
 
@@ -21,7 +21,7 @@ const confirmLessonSchema = z.object({
 });
 
 // Plan a lesson
-router.post('/class-subjects/:classSubjectId/lessons', requireAuth, requirePerson, async (req, res) => {
+router.post('/class-subjects/:classSubjectId/lessons', requireAuth, requireTeacher, async (req, res) => {
   const classSubjectId = parseInt(req.params.classSubjectId as string);
 
   const result = planLessonSchema.safeParse(req.body);
@@ -32,7 +32,7 @@ router.post('/class-subjects/:classSubjectId/lessons', requireAuth, requirePerso
 });
 
 // Confirm a lesson was taught
-router.patch('/lessons/:lessonId/confirm', requireAuth, requirePerson, async (req, res) => {
+router.patch('/lessons/:lessonId/confirm', requireAuth, requireTeacher, async (req, res) => {
   const lessonId = parseInt(req.params.lessonId as string);
 
   const result = confirmLessonSchema.safeParse(req.body);
@@ -43,7 +43,7 @@ router.patch('/lessons/:lessonId/confirm', requireAuth, requirePerson, async (re
 });
 
 // List all lessons for a class-subject
-router.get('/class-subjects/:classSubjectId/lessons', requireAuth, requirePerson, async (req, res) => {
+router.get('/class-subjects/:classSubjectId/lessons', requireAuth, requireTeacher, async (req, res) => {
   const classSubjectId = parseInt(req.params.classSubjectId as string);
   const lessonList = await getLessonsByClassSubject(classSubjectId);
   return res.json(lessonList);

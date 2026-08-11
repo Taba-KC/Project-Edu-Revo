@@ -9,8 +9,8 @@ const JWT_SECRET = process.env.JWT_SECRET!;
 const ACCESS_TOKEN_EXPIRY  = '15m';
 const REFRESH_TOKEN_EXPIRY_DAYS = 7;
 
-export function generateAccessToken(accountId: number, accountType: string, schoolId: number) {
-  return jwt.sign({ accountId, accountType, schoolId }, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
+export function generateAccessToken(accountId: number, accountType: string, schoolId: number, role?: string) {
+  return jwt.sign({ accountId, accountType, schoolId, role }, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
 }
 
 async function storeRefreshToken(rawToken: string, accountId: number, accountType: string, schoolId: number) {
@@ -24,14 +24,11 @@ async function storeRefreshToken(rawToken: string, accountId: number, accountTyp
 export async function loginPerson(username: string, password: string) {
   const [person] = await db.select().from(people).where(eq(people.username, username));
   if (!person || !person.passwordHash) throw new Error('Invalid credentials');
-
   const valid = await bcrypt.compare(password, person.passwordHash);
   if (!valid) throw new Error('Invalid credentials');
-
-  const accessToken  = generateAccessToken(person.id, 'person', person.schoolId);
-  const rawRefresh   = crypto.randomBytes(64).toString('hex');
+  const accessToken = generateAccessToken(person.id, 'person', person.schoolId, person.role);
+  const rawRefresh = crypto.randomBytes(64).toString('hex');
   await storeRefreshToken(rawRefresh, person.id, 'person', person.schoolId);
-
   return { accessToken, refreshToken: rawRefresh };
 }
 

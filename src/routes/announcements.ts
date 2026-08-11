@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { requireAuth, requirePerson, requireLearner } from '../middleware/auth';
+import { requireAuth, requirePrincipal, requireLearner } from '../middleware/auth';
 import { createAnnouncement, getSchoolAnnouncements, getLearnerAnnouncements } from '../services/announcementService';
 
 const router = Router();
@@ -16,7 +16,7 @@ const createSchema = z.object({
 );
 
 // Principal creates an announcement
-router.post('/schools/:schoolId/announcements', requireAuth, requirePerson, async (req: Request, res: Response) => {
+router.post('/schools/:schoolId/announcements', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
   const result = createSchema.safeParse(req.body);
   if (!result.success) { res.status(400).json({ error: result.error.flatten() }); return; }
 
@@ -29,7 +29,7 @@ router.post('/schools/:schoolId/announcements', requireAuth, requirePerson, asyn
 });
 
 // Principal views all announcements for the school
-router.get('/schools/:schoolId/announcements', requireAuth, requirePerson, async (req: Request, res: Response) => {
+router.get('/schools/:schoolId/announcements', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
   const schoolId = req.caller!.schoolId;
   if (isNaN(schoolId)) { res.status(400).json({ error: 'Invalid school ID' }); return; }
 

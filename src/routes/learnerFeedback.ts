@@ -7,7 +7,7 @@ import {
   upsertQuestionFeedback,
   getAggregatedLessonFeedback,
 } from '../services/learnerFeedbackService';
-import { requireAuth, requireLearner, requirePerson } from '../middleware/auth';
+import { requireAuth, requireLearner, requireTeacher } from '../middleware/auth';
 
 const router = Router();
 
@@ -73,7 +73,7 @@ router.post('/question-feedback', requireAuth, requireLearner, async (req, res) 
 });
 
 // Flow 6 — teacher views aggregated feedback for a lesson
-router.get('/lessons/:lessonId/feedback', requireAuth, requirePerson, async (req, res) => {
+router.get('/lessons/:lessonId/feedback', requireAuth, requireTeacher, async (req, res) => {
   const lessonId = parseInt(req.params.lessonId as string);
   const aggregated = await getAggregatedLessonFeedback(lessonId);
   return res.json(aggregated);

@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { createGrade, getGradesBySchool } from '../services/gradeService';
 import { getSchoolById } from '../services/schoolService';
+import { requireAuth, requirePrincipal } from '../middleware/auth';
 
 const router = Router();
 
@@ -9,7 +10,7 @@ const createGradeSchema = z.object({
   number: z.number().int().min(7).max(12),
 });
 
-router.post('/schools/:schoolId/grades', async (req: Request, res: Response) => {
+router.post('/schools/:schoolId/grades', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
   const schoolId = parseInt(req.params.schoolId as string);
   if (isNaN(schoolId)) {
     res.status(400).json({ error: 'Invalid school ID' });
@@ -32,7 +33,7 @@ router.post('/schools/:schoolId/grades', async (req: Request, res: Response) => 
   res.status(201).json(grade);
 });
 
-router.get('/schools/:schoolId/grades', async (req: Request, res: Response) => {
+router.get('/schools/:schoolId/grades', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
   const schoolId = parseInt(req.params.schoolId as string);
   if (isNaN(schoolId)) {
     res.status(400).json({ error: 'Invalid school ID' });

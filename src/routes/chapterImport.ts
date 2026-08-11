@@ -2,7 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import * as XLSX from 'xlsx';
 import { bulkImportChapters } from '../services/chapterImportService';
-import { requireAuth, requirePerson } from '../middleware/auth';
+import { requireAuth, requireDeveloper } from '../middleware/auth';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -10,7 +10,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 router.post(
   '/subjects/:subjectId/grades/:gradeNumber/chapters/import',
   requireAuth,
-  requirePerson,
+  requireDeveloper,
   upload.single('file'),
   async (req, res) => {
     const subjectId   = parseInt(req.params.subjectId as string);

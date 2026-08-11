@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { createClass, getClassesByGrade, assignStreamToClass } from '../services/classService';
 import { getSchoolById } from '../services/schoolService';
+import { requireAuth, requirePrincipal } from '../middleware/auth';
 
 const router = Router();
 
@@ -13,7 +14,7 @@ const assignStreamSchema = z.object({
   streamId: z.number().int().positive(),
 });
 
-router.post('/schools/:schoolId/grades/:gradeId/classes', async (req: Request, res: Response) => {
+router.post('/schools/:schoolId/grades/:gradeId/classes', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
   const schoolId = parseInt(req.params.schoolId as string);
   const gradeId = parseInt(req.params.gradeId as string);
 
@@ -38,7 +39,7 @@ router.post('/schools/:schoolId/grades/:gradeId/classes', async (req: Request, r
   res.status(201).json(cls);
 });
 
-router.get('/schools/:schoolId/grades/:gradeId/classes', async (req: Request, res: Response) => {
+router.get('/schools/:schoolId/grades/:gradeId/classes', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
   const schoolId = parseInt(req.params.schoolId as string);
   const gradeId = parseInt(req.params.gradeId as string);
 
@@ -57,7 +58,7 @@ router.get('/schools/:schoolId/grades/:gradeId/classes', async (req: Request, re
   res.json(classList);
 });
 
-router.post('/schools/:schoolId/grades/:gradeId/classes/:classId/stream', async (req: Request, res: Response) => {
+router.post('/schools/:schoolId/grades/:gradeId/classes/:classId/stream', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
   const schoolId = parseInt(req.params.schoolId as string);
   const gradeId = parseInt(req.params.gradeId as string);
   const classId = parseInt(req.params.classId as string);

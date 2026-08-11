@@ -7,6 +7,7 @@ import {
   getStreamSubjects,
 } from '../services/streamService';
 import { getSchoolById } from '../services/schoolService';
+import { requireAuth, requirePrincipal } from '../middleware/auth';
 
 const router = Router();
 
@@ -18,7 +19,7 @@ const addSubjectSchema = z.object({
   subjectId: z.number().int().positive(),
 });
 
-router.post('/schools/:schoolId/streams', async (req: Request, res: Response) => {
+router.post('/schools/:schoolId/streams', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
   const schoolId = parseInt(req.params.schoolId as string);
   if (isNaN(schoolId)) {
     res.status(400).json({ error: 'Invalid school ID' });
@@ -41,7 +42,7 @@ router.post('/schools/:schoolId/streams', async (req: Request, res: Response) =>
   res.status(201).json(stream);
 });
 
-router.get('/schools/:schoolId/streams', async (req: Request, res: Response) => {
+router.get('/schools/:schoolId/streams', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
   const schoolId = parseInt(req.params.schoolId as string);
   if (isNaN(schoolId)) {
     res.status(400).json({ error: 'Invalid school ID' });
@@ -58,7 +59,7 @@ router.get('/schools/:schoolId/streams', async (req: Request, res: Response) => 
   res.json(streams);
 });
 
-router.post('/schools/:schoolId/streams/:streamId/subjects', async (req: Request, res: Response) => {
+router.post('/schools/:schoolId/streams/:streamId/subjects', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
   const schoolId = parseInt(req.params.schoolId as string);
   const streamId = parseInt(req.params.streamId as string);
 
@@ -80,7 +81,7 @@ router.post('/schools/:schoolId/streams/:streamId/subjects', async (req: Request
   res.status(201).json(streamSubject);
 });
 
-router.get('/schools/:schoolId/streams/:streamId/subjects', async (req: Request, res: Response) => {
+router.get('/schools/:schoolId/streams/:streamId/subjects', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
   const streamId = parseInt(req.params.streamId as string);
   if (isNaN(streamId)) {
     res.status(400).json({ error: 'Invalid stream ID' });
