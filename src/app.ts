@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import { requestLogger } from './middleware/logger';
 import healthRouter from './routes/health';
 import schoolsRouter from './routes/schools';
@@ -20,6 +21,7 @@ import announcementsRouter from './routes/announcements';
 
 const app = express();
 
+app.use(cors({ origin: 'http://localhost:3001', credentials: true }));
 app.use(express.json());
 app.use(requestLogger);
 app.use(authRouter);

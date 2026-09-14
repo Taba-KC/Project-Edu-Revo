@@ -25,6 +25,7 @@
   "homepage": "https://github.com/Taba-KC/Project-Edu-Revo#readme",
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
+    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.2.0",
@@ -36,6 +37,7 @@
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
+    "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",

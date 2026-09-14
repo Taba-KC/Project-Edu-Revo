@@ -53,6 +53,25 @@ router.get('/schools/:schoolId/classes/:classId/learners', requireAuth, requireP
   return res.json(learnerList);
 });
 
+// Learner onboarding — look up account before claiming
+router.post('/learners/onboarding/lookup', async (req, res) => {
+  const lookupSchema = z.object({
+    schoolCode:      z.string().min(1),
+    admissionNumber: z.string().min(1),
+    initials:        z.string().min(1),
+  });
+
+  const result = lookupSchema.safeParse(req.body);
+  if (!result.success) return res.status(400).json({ error: result.error.flatten() });
+
+  const { schoolCode, admissionNumber, initials } = result.data;
+  const learner = await findLearnerForOnboarding(schoolCode, admissionNumber, initials);
+  if (!learner) return res.status(404).json({ error: 'No matching record found' });
+  if (learner.accountSetUp) return res.status(400).json({ error: 'Account already set up' });
+
+  return res.json({ title: learner.title, firstName: learner.firstName, surname: learner.surname });
+});
+
 // Learner onboarding — claim account and set username + password
 router.post('/learners/onboarding', async (req, res) => {
   const result = onboardingSchema.safeParse(req.body);

@@ -50,6 +50,25 @@ router.get('/schools/:schoolId/people', requireAuth, requirePrincipal, async (re
   return res.json(persons);
 });
 
+// Person onboarding — look up account before claiming
+router.post('/people/onboarding/lookup', async (req, res) => {
+  const lookupSchema = z.object({
+    schoolCode:  z.string().min(1),
+    staffNumber: z.string().min(1),
+    initials:    z.string().min(1),
+  });
+
+  const result = lookupSchema.safeParse(req.body);
+  if (!result.success) return res.status(400).json({ error: result.error.flatten() });
+
+  const { schoolCode, staffNumber, initials } = result.data;
+  const person = await findPersonForOnboarding(schoolCode, staffNumber, initials);
+  if (!person) return res.status(404).json({ error: 'No matching record found' });
+  if (person.accountSetUp) return res.status(400).json({ error: 'Account already set up' });
+
+  return res.json({ title: person.title, firstName: person.firstName, surname: person.surname });
+});
+
 // Person onboarding — claim account and set username + password
 router.post('/people/onboarding', async (req, res) => {
   const result = onboardingSchema.safeParse(req.body);

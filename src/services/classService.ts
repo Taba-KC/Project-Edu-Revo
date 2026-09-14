@@ -1,6 +1,6 @@
 import { db } from '../db';
-import { classes, streamSubjects, classSubjects, chapters, classChapters, grades } from '../db/schema';
-import { eq, and } from 'drizzle-orm';
+import { classes, streamSubjects, classSubjects, chapters, classChapters, grades, learners } from '../db/schema';
+import { eq, and, count } from 'drizzle-orm';
 
 export async function createClass(data: { gradeId: number; name: string }) {
   const [cls] = await db.insert(classes).values(data).returning();
@@ -9,9 +9,18 @@ export async function createClass(data: { gradeId: number; name: string }) {
 
 export async function getClassesByGrade(gradeId: number) {
   return db
-    .select()
+    .select({
+      id: classes.id,
+      gradeId: classes.gradeId,
+      streamId: classes.streamId,
+      name: classes.name,
+      createdAt: classes.createdAt,
+      learnerCount: count(learners.id),
+    })
     .from(classes)
+    .leftJoin(learners, eq(learners.classId, classes.id))
     .where(eq(classes.gradeId, gradeId))
+    .groupBy(classes.id, classes.gradeId, classes.streamId, classes.name, classes.createdAt)
     .orderBy(classes.name);
 }
 
