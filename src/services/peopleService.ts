@@ -1,6 +1,6 @@
 import { db } from '../db';
-import { people, schools } from '../db/schema';
-import { and, eq } from 'drizzle-orm';
+import { classChapters, classSubjects, chapters, people, schools } from '../db/schema';
+import { and, count, eq, sql } from 'drizzle-orm';
 
 export async function addPerson(data: {
   title: string;
@@ -14,7 +14,65 @@ export async function addPerson(data: {
 }
 
 export async function getPeopleBySchool(schoolId: number) {
-  return db.select().from(people).where(eq(people.schoolId, schoolId)).orderBy(people.surname);
+  return db
+    .select({
+      id: people.id,
+      title: people.title,
+      firstName: people.firstName,
+      surname: people.surname,
+      staffNumber: people.staffNumber,
+      role: people.role,
+      schoolId: people.schoolId,
+      username: people.username,
+      accountSetUp: people.accountSetUp,
+      createdAt: people.createdAt,
+      assignedChapterCount: sql<number>`count(${classChapters.id}) filter (where ${classSubjects.active} = true and ${chapters.active} = true)::int`,
+      assignedSubjectCount: sql<number>`(select count(*)::int from class_subjects cs where cs.person_id = ${people.id} and cs.active = true)`,
+    })
+    .from(people)
+    .leftJoin(classChapters, eq(classChapters.personId, people.id))
+    .leftJoin(classSubjects, eq(classSubjects.id, classChapters.classSubjectId))
+    .leftJoin(chapters, eq(chapters.id, classChapters.chapterId))
+    .where(eq(people.schoolId, schoolId))
+    .groupBy(
+      people.id,
+      people.title,
+      people.firstName,
+      people.surname,
+      people.staffNumber,
+      people.role,
+      people.schoolId,
+      people.username,
+      people.accountSetUp,
+      people.createdAt,
+    )
+    .orderBy(people.surname);
+}
+
+export async function bulkAddPeople(
+  staff: { title: string; firstName: string; surname: string; staffNumber: string }[],
+  schoolId: number,
+) {
+  const succeeded: number[] = [];
+  const errors: { row: number; staffNumber: string; reason: string }[] = [];
+
+  for (let i = 0; i < staff.length; i++) {
+    const row = staff[i];
+    try {
+      const person = await addPerson({ ...row, schoolId });
+      succeeded.push(person.id);
+    } catch (err: any) {
+      const isDuplicate =
+        err.cause?.code === '23505' ||
+        (err.cause?.message ?? '').toLowerCase().includes('duplicate key');
+      const reason = isDuplicate
+        ? 'Staff number already exists for this school'
+        : 'Failed to import row';
+      errors.push({ row: i + 2, staffNumber: row.staffNumber, reason });
+    }
+  }
+
+  return { succeeded: succeeded.length, failed: errors.length, errors };
 }
 
 export async function findPersonForOnboarding(schoolCode: string, staffNumber: string, initials: string) {

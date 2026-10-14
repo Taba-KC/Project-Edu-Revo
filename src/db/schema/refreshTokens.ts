@@ -5,7 +5,7 @@ export const refreshTokens = pgTable('refresh_tokens', {
   tokenHash:   text('token_hash').notNull().unique(),
   accountType: text('account_type').notNull(),
   accountId:   integer('account_id').notNull(),
-  schoolId:    integer('school_id').notNull(),
+  schoolId:    integer('school_id'),
   expiresAt:   timestamp('expires_at').notNull(),
   createdAt:   timestamp('created_at').defaultNow().notNull(),
 });

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { loginPerson, loginLearner, refreshAccessToken, logout } from '../services/authService';
+import { loginPerson, loginLearner, loginManager, refreshAccessToken, logout } from '../services/authService';
 
 const router = Router();
 
@@ -57,4 +57,10 @@ router.post('/auth/logout', async (req, res) => {
   return res.json({ message: 'Logged out' });
 });
 
+router.post('/auth/managers/login', async (req, res) => {
+  const result = loginSchema.safeParse(req.body);
+  if (!result.success) return res.status(400).json({ error: 'Username and password are required' });
+  try { return res.json(await loginManager(result.data.username, result.data.password)); }
+  catch { return res.status(401).json({ error: 'Invalid credentials' }); }
+});
 export default router;

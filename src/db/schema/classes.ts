@@ -1,14 +1,20 @@
-import { pgTable, serial, integer, text, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, serial, integer, text, timestamp, unique } from 'drizzle-orm/pg-core';
 import { grades } from './grades';
 import { streams } from './streams';
+import { people } from './people';
 
 export const classes = pgTable('classes', {
-  id:        serial('id').primaryKey(),
-  gradeId:   integer('grade_id').notNull().references(() => grades.id),
-  streamId:  integer('stream_id').references(() => streams.id),
-  name:      text('name').notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+  id:              serial('id').primaryKey(),
+  gradeId:         integer('grade_id').notNull().references(() => grades.id),
+  streamId:        integer('stream_id').references(() => streams.id),
+  classTeacherId:  integer('class_teacher_id').references(() => people.id),
+  name:            text('name').notNull(),
+  description:     text('description'),
+  profileImageUrl: text('profile_image_url'),
+  createdAt:       timestamp('created_at').defaultNow().notNull(),
+}, (table) => [
+  unique().on(table.gradeId, table.name),
+]);
 
 
 

@@ -78,6 +78,62 @@
       "when": 1786411792740,
       "tag": "0010_tidy_zzzax",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1786500000000,
+      "tag": "0011_class_profile_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1786586400000,
+      "tag": "0012_unique_class_names",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1786672800000,
+      "tag": "0013_unique_grade_numbers",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1786759200000,
+      "tag": "0014_class_subject_teachers",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1786845600000,
+      "tag": "0015_app_manager_curriculum",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1786932000000,
+      "tag": "0016_fixed_school_grades",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1787018400000,
+      "tag": "0017_curriculum_topics",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1787104800000,
+      "tag": "0018_teacher_custom_concept_scope",
+      "breakpoints": true
     }
   ]
 }

@@ -1,63 +1,18 @@
 import { Router } from 'express';
-import { z } from 'zod';
-import {
-  createHomework,
-  getHomeworkByLesson,
-  addQuestion,
-  getQuestionsByHomework,
-} from '../services/homeworkService';
+import { eq } from 'drizzle-orm';
+import { db } from '../db';
+import { homework } from '../db/schema';
 import { requireAuth, requireTeacher } from '../middleware/auth';
-
-const router = Router();
-
-const createHomeworkSchema = z.object({
-  dueDate:         z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, 'Use format YYYY-MM-DDTHH:MM'),
-  memoReleaseType: z.enum(['immediately', 'at_due_date', 'custom']),
-  memoReleaseAt:   z.string().optional(),
+import { getHomeworkByLesson, getQuestionsByHomework } from '../services/homeworkService';
+import { TeacherError, lessonScope } from '../services/teacherWorkspaceService';
+const router=Router();
+// Sending an empty set before its questions would expose an unfinished draft to learners.
+router.post('/lessons/:lessonId/homework',requireAuth,requireTeacher,(_req,res)=>res.status(410).json({error:'Use the staff homework review flow to send a complete set.'}));
+router.post('/homework/:homeworkId/questions',requireAuth,requireTeacher,(_req,res)=>res.status(410).json({error:'Add questions in the staff homework review flow before sending.'}));
+router.get('/lessons/:lessonId/homework',requireAuth,requireTeacher,async(req,res)=>{
+ try{const lessonId=Number(req.params.lessonId);await db.transaction(tx=>lessonScope(tx,req.caller!,lessonId));const set=await getHomeworkByLesson(lessonId);return set?res.json(set):res.status(404).json({error:'No homework found for this lesson'});}catch(error){if(error instanceof TeacherError)return res.status(error.status).json({error:error.message});throw error;}
 });
-
-const addQuestionSchema = z.object({
-  conceptId:  z.number().int().positive(),
-  orderIndex: z.number().int().positive(),
-  body:       z.string().min(1),
-  memo:       z.string().optional(),
+router.get('/homework/:homeworkId/questions',requireAuth,requireTeacher,async(req,res)=>{
+ try{const homeworkId=Number(req.params.homeworkId);const [set]=await db.select().from(homework).where(eq(homework.id,homeworkId));if(!set)return res.status(404).json({error:'Homework not found'});await db.transaction(tx=>lessonScope(tx,req.caller!,set.lessonId));return res.json(await getQuestionsByHomework(homeworkId));}catch(error){if(error instanceof TeacherError)return res.status(error.status).json({error:error.message});throw error;}
 });
-
-// Create a homework set for a lesson
-router.post('/lessons/:lessonId/homework', requireAuth, requireTeacher, async (req, res) => {
-  const lessonId = parseInt(req.params.lessonId as string);
-
-  const result = createHomeworkSchema.safeParse(req.body);
-  if (!result.success) return res.status(400).json({ error: result.error.flatten() });
-
-  const hw = await createHomework({ ...result.data, lessonId });
-  return res.status(201).json(hw);
-});
-
-// Get the homework set for a lesson
-router.get('/lessons/:lessonId/homework', requireAuth, async (req, res) => {
-  const lessonId = parseInt(req.params.lessonId as string);
-  const hw = await getHomeworkByLesson(lessonId);
-  if (!hw) return res.status(404).json({ error: 'No homework found for this lesson' });
-  return res.json(hw);
-});
-
-// Add a question to a homework set
-router.post('/homework/:homeworkId/questions', requireAuth, requireTeacher, async (req, res) => {
-  const homeworkId = parseInt(req.params.homeworkId as string);
-
-  const result = addQuestionSchema.safeParse(req.body);
-  if (!result.success) return res.status(400).json({ error: result.error.flatten() });
-
-  const question = await addQuestion({ ...result.data, homeworkId });
-  return res.status(201).json(question);
-});
-
-// List all questions in a homework set
-router.get('/homework/:homeworkId/questions', requireAuth, requireTeacher, async (req, res) => {
-  const homeworkId = parseInt(req.params.homeworkId as string);
-  const questionList = await getQuestionsByHomework(homeworkId);
-  return res.json(questionList);
-});
-
 export default router;

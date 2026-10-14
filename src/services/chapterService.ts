@@ -1,5 +1,5 @@
 import { db } from '../db';
-import { chapters, classChapters } from '../db/schema';
+import { chapters, classChapters, classSubjects } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
 
 export async function createChapter(data: {
@@ -15,7 +15,7 @@ export async function createChapter(data: {
 
 export async function getChaptersBySubjectGrade(subjectId: number, gradeNumber: number) {
   return db.select().from(chapters)
-    .where(and(eq(chapters.subjectId, subjectId), eq(chapters.gradeNumber, gradeNumber)))
+    .where(and(eq(chapters.subjectId, subjectId), eq(chapters.gradeNumber, gradeNumber), eq(chapters.active, true)))
     .orderBy(chapters.orderIndex);
 }
 
@@ -25,7 +25,8 @@ export async function assignChapterToClass(classSubjectId: number, chapterId: nu
 
   if (existing) return existing;
 
-  const [classChapter] = await db.insert(classChapters).values({ classSubjectId, chapterId }).returning();
+  const [subject] = await db.select().from(classSubjects).where(eq(classSubjects.id, classSubjectId));
+  const [classChapter] = await db.insert(classChapters).values({ classSubjectId, chapterId, personId: subject?.personId }).returning();
   return classChapter;
 }
 
@@ -39,5 +40,7 @@ export async function assignPersonToClassChapter(classSubjectId: number, chapter
 
 export async function getClassChapters(classSubjectId: number) {
   return db.select().from(classChapters)
-    .where(eq(classChapters.classSubjectId, classSubjectId));
+    .innerJoin(chapters, eq(chapters.id, classChapters.chapterId))
+    .where(and(eq(classChapters.classSubjectId, classSubjectId), eq(chapters.active, true)))
+    .then(rows => rows.map(row => row.class_chapters));
 }

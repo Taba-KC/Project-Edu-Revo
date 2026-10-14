@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, text, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, serial, integer, text, timestamp, boolean } from 'drizzle-orm/pg-core';
 import { subjects } from './subjects';
 
 export const chapters = pgTable('chapters', {
@@ -7,6 +7,7 @@ export const chapters = pgTable('chapters', {
   gradeNumber: integer('grade_number').notNull(),
   name:        text('name').notNull(),
   orderIndex:  integer('order_index').notNull(),
+  active: boolean('active').notNull().default(true),
   label:       text('label'),
   createdAt:   timestamp('created_at').defaultNow().notNull(),
 });

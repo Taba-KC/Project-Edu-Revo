@@ -1,4 +1,5 @@
-import { pgTable, serial, integer, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, serial, integer, timestamp, unique, check } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { schools } from './schools';
 
 export const grades = pgTable('grades', {
@@ -6,7 +7,10 @@ export const grades = pgTable('grades', {
   schoolId:  integer('school_id').notNull().references(() => schools.id),
   number:    integer('number').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (table) => [
+  unique().on(table.schoolId, table.number),
+  check('grades_supported_number', sql`${table.number} BETWEEN 8 AND 12`),
+]);
 
 
 

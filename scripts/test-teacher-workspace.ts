@@ -1,0 +1,62 @@
+import 'dotenv/config';
+import assert from 'node:assert/strict';
+import { and, eq } from 'drizzle-orm';
+import { db,pool } from '../src/db';
+import { circuits,schools,grades,classes,people,learners,subjects,classSubjects,classChapters,chapters,topics,concepts,lessons,lessonConcepts,lessonFeedback,homework,questions } from '../src/db/schema';
+import { getPlanning,savePlan,confirmPlan,getHomeworkContext,sendHomework,updateQuestionMemo,TeacherError } from '../src/services/teacherWorkspaceService';
+import { getDashboard } from '../src/services/dashboardService';
+import { generateHomeworkDraft,regenerateMemo } from '../src/services/homeworkAiService';
+async function run(){let checks=0;const rollback=new Error('Rollback teacher workflow fixtures');
+ try{await db.transaction(async tx=>{
+ const key='teacher-flow-'+Date.now();const [circuit]=await tx.select().from(circuits).limit(1);assert.ok(circuit);
+ const [school,other]=await tx.insert(schools).values([{circuitId:circuit.id,name:key,activationCode:key},{circuitId:circuit.id,name:key+'other',activationCode:key+'other'}]).returning();
+ const [grade]=await tx.select().from(grades).where(and(eq(grades.schoolId,school!.id),eq(grades.number,11)));
+ const [cls]=await tx.insert(classes).values({gradeId:grade!.id,name:'11B'}).returning();
+ const [teacher,stranger]=await tx.insert(people).values(['T','S'].map(staffNumber=>({title:'Ms',firstName:'Test',surname:staffNumber,staffNumber,schoolId:school!.id,accountSetUp:true}))).returning();
+ const caller={accountId:teacher!.id,accountType:'person',schoolId:school!.id,role:'teacher'};const outsider={...caller,accountId:stranger!.id};
+ const [subject]=await tx.insert(subjects).values({name:key}).returning();const [allocation]=await tx.insert(classSubjects).values({subjectId:subject!.id,classId:cls!.id,personId:teacher!.id}).returning();
+ const [chapter,wrongGrade]=await tx.insert(chapters).values([{subjectId:subject!.id,gradeNumber:11,name:'Forces',orderIndex:1},{subjectId:subject!.id,gradeNumber:10,name:'Wrong grade',orderIndex:1}]).returning();
+ const [topic]=await tx.insert(topics).values({chapterId:chapter!.id,name:'Laws',orderIndex:1}).returning();
+ const [first,second]=await tx.insert(concepts).values(['First law','Second law'].map((name,i)=>({chapterId:chapter!.id,topicId:topic!.id,name,orderIndex:i}))).returning();
+ const initial=await getPlanning(caller,allocation!.id,tx);assert.equal(initial.chapter!.taught,0);assert.equal(initial.chapter!.id,chapter!.id);checks++;
+ await assert.rejects(getPlanning(outsider,allocation!.id,tx),TeacherError);await assert.rejects(getPlanning({...caller,schoolId:other!.id},allocation!.id,tx),TeacherError);checks++;
+ await assert.rejects(savePlan(caller,allocation!.id,{chapterId:wrongGrade!.id,date:'2026-10-09',conceptIds:[first!.id]},tx),TeacherError);checks++;
+ await assert.rejects(savePlan(caller,allocation!.id,{chapterId:chapter!.id,date:'2026-10-09',conceptIds:[999999]},tx),TeacherError);checks++;
+ const plan=await savePlan(caller,allocation!.id,{chapterId:chapter!.id,date:'2026-10-09',conceptIds:[first!.id,second!.id],customConcepts:[{name:'A local example',topicId:topic!.id}]},tx);
+ assert.equal(plan.status,'planned');assert.equal((await getPlanning(caller,allocation!.id,tx)).chapter!.taught,0);checks++;
+ const plannedItems=await tx.select().from(lessonConcepts).where(eq(lessonConcepts.lessonId,plan.id));assert.equal(plannedItems.length,3);checks++;
+ await assert.rejects(getHomeworkContext(caller,plan.id,tx),TeacherError);checks++;
+ await assert.rejects(confirmPlan(outsider,plan.id,[first!.id],tx),TeacherError);checks++;
+ await assert.rejects(confirmPlan(caller,plan.id,[999999],tx),TeacherError);checks++;
+ await confirmPlan(caller,plan.id,[first!.id],tx,new Date('2026-10-10'));
+ const progress=await getPlanning(caller,allocation!.id,tx);assert.equal(progress.chapter!.taught,1);assert.ok(!progress.taughtConceptIds.includes(second!.id));checks++;
+ const customId=progress.customConcepts[0]!.id;await savePlan(caller,allocation!.id,{chapterId:chapter!.id,date:'2026-10-10',conceptIds:[customId]},tx);assert.ok(!progress.taughtConceptIds.includes(customId));checks++;
+ await assert.rejects(confirmPlan(caller,plan.id,[first!.id],tx),TeacherError);checks++;
+ const replan=await savePlan(caller,allocation!.id,{chapterId:chapter!.id,date:'2026-10-09',conceptIds:[first!.id]},tx);await confirmPlan(caller,replan.id,[first!.id],tx,new Date('2026-10-10'));assert.equal((await getPlanning(caller,allocation!.id,tx)).chapter!.taught,1);checks++;
+ const [learner]=await tx.insert(learners).values({title:'Ms',firstName:'Private',surname:'Learner',admissionNumber:'1',schoolId:school!.id,classId:cls!.id,accountSetUp:true}).returning();
+ const [latestItem]=await tx.select().from(lessonConcepts).where(eq(lessonConcepts.lessonId,replan.id));await tx.insert(lessonFeedback).values({learnerID:learner!.id,lessonConceptId:latestItem!.id,reaction:'didnt_understand'});
+ const flagged=await getPlanning(caller,allocation!.id,tx);assert.equal(flagged.flaggedConcepts[0]!.didntUnderstand,1);assert.ok(!JSON.stringify(flagged).includes('Private'));checks++;
+ const question={conceptId:first!.id,body:'Explain inertia',memo:''};const payload={dueDate:'2030-01-01T12:00:00Z',memoReleaseType:'at_due_date' as const,questions:[question]};
+ await assert.rejects(sendHomework(outsider,plan.id,payload,tx),TeacherError);checks++;
+ await assert.rejects(sendHomework(caller,plan.id,{...payload,questions:[{...question,conceptId:second!.id}]},tx),TeacherError);assert.equal((await tx.select().from(homework).where(eq(homework.lessonId,plan.id))).length,0);checks++;
+ const set=await sendHomework(caller,plan.id,payload,tx);const [savedQuestion]=await tx.select().from(questions).where(eq(questions.homeworkId,set.id));assert.equal(savedQuestion!.memo,null);checks++;
+ await assert.rejects(updateQuestionMemo(outsider,savedQuestion!.id,'Not allowed',tx),TeacherError);checks++;
+ await updateQuestionMemo(caller,savedQuestion!.id,'Worked answer',tx);assert.equal((await tx.select().from(questions).where(eq(questions.id,savedQuestion!.id)))[0]!.memo,'Worked answer');checks++;
+ await assert.rejects(sendHomework(caller,plan.id,payload,tx),TeacherError);checks++;
+ assert.equal((await getDashboard('learner',learner!.id,school!.id,tx)).subjects[0]!.lessons.find(item=>item.id===plan.id)!.homework.length,1);checks++;
+ const future=await savePlan(caller,allocation!.id,{chapterId:chapter!.id,date:'2030-01-01',conceptIds:[second!.id]},tx);await assert.rejects(confirmPlan(caller,future.id,[second!.id],tx,new Date('2026-10-10')),TeacherError);checks++;
+ await tx.insert(classChapters).values({classSubjectId:allocation!.id,chapterId:chapter!.id,personId:stranger!.id});await assert.rejects(savePlan(caller,allocation!.id,{chapterId:chapter!.id,date:'2026-10-10',conceptIds:[second!.id]},tx),TeacherError);checks++;
+ throw rollback;
+ });}catch(error){if(error!==rollback)throw error;}
+ const originalKey=process.env.OPENAI_API_KEY;process.env.OPENAI_API_KEY='test-key-not-live';
+ try{
+  let called=0;const mock:typeof fetch=async(_url,options)=>{called++;const body=JSON.parse(String(options!.body));assert.equal(body.store,false);assert.equal(body.text.format.type,'json_schema');return new Response(JSON.stringify({status:'completed',output:[{content:[{type:'output_text',text:JSON.stringify({questions:[{conceptId:1,body:'Question',memo:'Answer'}]})}]}]}),{status:200});};
+  const draft=await generateHomeworkDraft(11,'Forces',[{id:1,name:'First law'}],[{conceptId:1,count:1}],mock);assert.equal(draft.questions.length,1);checks++;
+  await assert.rejects(generateHomeworkDraft(11,'Forces',[{id:1,name:'First law'}],[{conceptId:2,count:1}],mock),TeacherError);assert.equal(called,1);checks++;
+  await assert.rejects(generateHomeworkDraft(11,'Forces',[{id:1,name:'First law'}],[{conceptId:1,count:2}],mock),TeacherError);checks++;
+  const memo=await regenerateMemo(11,'Forces','Question','Wrong answer','Fix signs',async()=>new Response(JSON.stringify({status:'completed',output:[{content:[{type:'output_text',text:'{"memo":"Corrected answer"}'}]}]})));assert.equal(memo.memo,'Corrected answer');checks++;
+  await assert.rejects(generateHomeworkDraft(11,'Forces',[{id:1,name:'First law'}],[{conceptId:1,count:1}],async()=>new Response('{}',{status:429})),(error:unknown)=>error instanceof TeacherError&&error.status===429);checks++;
+ }finally{if(originalKey)process.env.OPENAI_API_KEY=originalKey;else delete process.env.OPENAI_API_KEY;}
+ console.log(checks+' teacher workflow checks passed; fixtures rolled back; AI calls mocked.');
+}
+run().catch(error=>{console.error(error);process.exitCode=1;}).finally(()=>pool.end());

@@ -1,11 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { createSubject, getAllSubjects } from '../services/subjectService';
+import { createSubject, getAllSubjects, DuplicateSubjectError } from '../services/subjectService';
 
 const router = Router();
 
 const createSubjectSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().trim().min(1).max(120),
 });
 
 router.post('/subjects', async (req: Request, res: Response) => {
@@ -15,8 +15,8 @@ router.post('/subjects', async (req: Request, res: Response) => {
     return;
   }
 
-  const subject = await createSubject(result.data);
-  res.status(201).json(subject);
+  try { const subject = await createSubject(result.data); res.status(201).json(subject); }
+  catch (error) { if (error instanceof DuplicateSubjectError) { res.status(409).json({ error: error.message }); return; } throw error; }
 });
 
 router.get('/subjects', async (_req: Request, res: Response) => {

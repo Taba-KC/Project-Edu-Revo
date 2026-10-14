@@ -1,10 +1,12 @@
-import { pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+
+import { sql } from 'drizzle-orm';
 
 export const subjects = pgTable('subjects', {
   id:        serial('id').primaryKey(),
   name:      text('name').notNull().unique(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, t => [uniqueIndex('subjects_normalized_name_unique').on(sql`lower(regexp_replace(btrim(${t.name}), '[[:space:]]+', ' ', 'g'))`)]);
 
 
 

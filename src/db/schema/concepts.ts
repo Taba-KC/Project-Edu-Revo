@@ -1,14 +1,19 @@
-import { pgTable, serial, integer, text, boolean, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, serial, integer, text, boolean, timestamp, foreignKey } from 'drizzle-orm/pg-core';
 import { chapters } from './chapters';
+import { topics } from './topics';
+import { classSubjects } from './classSubjects';
 
 export const concepts = pgTable('concepts', {
   id:         serial('id').primaryKey(),
   chapterId:  integer('chapter_id').notNull().references(() => chapters.id),
+  topicId: integer('topic_id').notNull(),
   name:       text('name').notNull(),
   orderIndex: integer('order_index').notNull(),
+  active: boolean('active').notNull().default(true),
   isCustom:   boolean('is_custom').notNull().default(false),
+  classSubjectId: integer('class_subject_id').references(() => classSubjects.id),
   createdAt:  timestamp('created_at').defaultNow().notNull(),
-});
+}, t => [foreignKey({ name: 'concepts_topic_chapter_fk', columns: [t.topicId, t.chapterId], foreignColumns: [topics.id, topics.chapterId] })]);
 
 
 
@@ -24,7 +29,7 @@ export const concepts = pgTable('concepts', {
 
    What each column does:
 
- * chapterId — foreign key to the chapter this concept belongs to. 
+ * topicId — foreign key to its topic; chapterId retains the chapter association.
     - A concept always lives inside exactly one chapter.
  * name — the concept name, e.g. "Solving quadratic equations".
  * orderIndex — same pattern as chapters. 
@@ -43,7 +48,8 @@ export const concepts = pgTable('concepts', {
             └── classes (gradeId, streamId)
                 └── classSubjects (classId, subjectId)
                         └── chapters (classSubjectId, teacherId)
-                            └── concepts (chapterId)
+                            └── topics (chapterId)
+                                └── concepts (topicId, chapterId)
 
  * This is the entire curriculum structure. 
     - Everything that happens in the platform — lessons taught, homework assigned, feedback given — attaches somewhere on this tree.

@@ -1,5 +1,6 @@
 import { db } from '../db';
-import { chapters, concepts, classSubjects, classChapters, classes, grades } from '../db/schema';
+import { chapters, classSubjects, classChapters, classes, grades } from '../db/schema';
+import { createConcept } from './conceptService';
 import { eq, and } from 'drizzle-orm';
 
 export async function bulkImportChapters(
@@ -21,6 +22,7 @@ export async function bulkImportChapters(
           eq(chapters.subjectId, subjectId),
           eq(chapters.gradeNumber, gradeNumber),
           eq(chapters.name, chapterName),
+          eq(chapters.active, true),
         ));
 
       if (existing) {
@@ -40,7 +42,7 @@ export async function bulkImportChapters(
     const conceptIndex = conceptOrderMap.get(chapterName)!;
 
     try {
-      await db.insert(concepts).values({ chapterId, name: conceptName, orderIndex: conceptIndex });
+      await createConcept({ chapterId, name: conceptName, orderIndex: conceptIndex });
       conceptOrderMap.set(chapterName, conceptIndex + 1);
     } catch {
       conceptErrors.push({ row: i + 2, reason: `Could not add concept "${conceptName}" to chapter "${chapterName}"` });
@@ -56,15 +58,15 @@ export async function bulkImportChapters(
 
 async function autoAssignToExistingClasses(chapterId: number, subjectId: number, gradeNumber: number) {
   const matchingClassSubjects = await db
-    .select({ classSubjectId: classSubjects.id })
+    .select({ classSubjectId: classSubjects.id, personId: classSubjects.personId })
     .from(classSubjects)
     .innerJoin(classes, eq(classes.id, classSubjects.classId))
     .innerJoin(grades, eq(grades.id, classes.gradeId))
-    .where(and(eq(classSubjects.subjectId, subjectId), eq(grades.number, gradeNumber)));
+    .where(and(eq(classSubjects.subjectId, subjectId), eq(grades.number, gradeNumber), eq(classSubjects.active, true)));
 
   if (matchingClassSubjects.length === 0) return;
 
   await db.insert(classChapters).values(
-    matchingClassSubjects.map(cs => ({ classSubjectId: cs.classSubjectId, chapterId }))
+    matchingClassSubjects.map(cs => ({ classSubjectId: cs.classSubjectId, chapterId, personId: cs.personId }))
   );
 }

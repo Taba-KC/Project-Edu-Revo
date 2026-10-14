@@ -6,6 +6,7 @@ import { requireAuth, requirePrincipal } from '../middleware/auth';
 const router = Router();
 
 const createConceptSchema = z.object({
+  topicId:    z.number().int().positive().optional(),
   name:       z.string().min(1),
   orderIndex: z.number().int().positive(),
 });

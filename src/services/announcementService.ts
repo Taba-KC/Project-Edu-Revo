@@ -1,6 +1,6 @@
-import { eq, and, or, inArray } from 'drizzle-orm';
+import { and, desc, eq, or } from 'drizzle-orm';
 import { db } from '../db';
-import { announcements, classes } from '../db/schema';
+import { announcements, classes, people } from '../db/schema';
 
 export async function createAnnouncement(data: {
   schoolId: number;
@@ -16,10 +16,56 @@ export async function createAnnouncement(data: {
 
 export async function getSchoolAnnouncements(schoolId: number) {
   return db
-    .select()
+    .select({
+      id: announcements.id,
+      schoolId: announcements.schoolId,
+      createdBy: announcements.createdBy,
+      title: announcements.title,
+      body: announcements.body,
+      audienceType: announcements.audienceType,
+      audienceId: announcements.audienceId,
+      createdAt: announcements.createdAt,
+      createdByTitle: people.title,
+      createdByFirstName: people.firstName,
+      createdBySurname: people.surname,
+    })
     .from(announcements)
+    .leftJoin(people, eq(people.id, announcements.createdBy))
     .where(eq(announcements.schoolId, schoolId))
-    .orderBy(announcements.createdAt);
+    .orderBy(desc(announcements.createdAt));
+}
+
+export async function updateAnnouncement(
+  schoolId: number,
+  announcementId: number,
+  data: {
+    title?: string;
+    body?: string;
+    audienceType?: 'all' | 'grade' | 'class' | 'stream';
+    audienceId?: number | null;
+  },
+) {
+  const updates = {
+    ...data,
+    ...(data.audienceType === 'all' ? { audienceId: null } : {}),
+  };
+
+  const [announcement] = await db
+    .update(announcements)
+    .set(updates)
+    .where(and(eq(announcements.id, announcementId), eq(announcements.schoolId, schoolId)))
+    .returning();
+
+  return announcement ?? null;
+}
+
+export async function deleteAnnouncement(schoolId: number, announcementId: number) {
+  const [announcement] = await db
+    .delete(announcements)
+    .where(and(eq(announcements.id, announcementId), eq(announcements.schoolId, schoolId)))
+    .returning({ id: announcements.id });
+
+  return announcement ?? null;
 }
 
 export async function getLearnerAnnouncements(schoolId: number, classId: number) {

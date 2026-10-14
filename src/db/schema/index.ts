@@ -39,3 +39,7 @@ export * from './announcements';
         import { homework } from '../db/schema/homework';
         import { questions } from '../db/schema/questions';
  */
+export * from './appManagers';
+export * from './curriculumLibraries';
+
+export * from './topics';

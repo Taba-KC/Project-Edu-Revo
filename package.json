@@ -9,7 +9,17 @@
     "start": "node dist/server.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:seed": "tsx scripts/seed.ts"
+    "db:seed": "tsx scripts/seed.ts",
+    "test:principal-setup": "tsx scripts/test-principal-setup.ts",
+    "test:curriculum": "tsx scripts/test-curriculum-manager.ts",
+    "test:fixed-grades": "tsx scripts/test-fixed-grades.ts",
+    "test:class-curriculum": "tsx scripts/test-class-curriculum.ts",
+    "test:roster-import": "tsx scripts/test-roster-import.ts",
+    "test:roster-import-http": "tsx scripts/test-roster-import-http.ts",
+    "test:dashboards": "tsx scripts/test-dashboards.ts",
+    "test:dashboards-http": "tsx scripts/test-dashboards-http.ts",
+    "test:teacher-workspace": "tsx scripts/test-teacher-workspace.ts",
+    "test:teacher-workspace-http": "tsx scripts/test-teacher-workspace-http.ts"
   },
   "repository": {
     "type": "git",

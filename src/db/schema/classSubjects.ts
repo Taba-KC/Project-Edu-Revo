@@ -1,11 +1,14 @@
-import { pgTable, serial, integer, timestamp, unique } from 'drizzle-orm/pg-core';
+import { pgTable, serial, integer, timestamp, unique, boolean } from 'drizzle-orm/pg-core';
 import { classes } from './classes';
 import { subjects } from './subjects';
+import { people } from './people';
 
 export const classSubjects = pgTable('class_subjects', {
   id:        serial('id').primaryKey(),
   classId:   integer('class_id').notNull().references(() => classes.id),
   subjectId: integer('subject_id').notNull().references(() => subjects.id),
+  personId: integer('person_id').references(() => people.id),
+  active: boolean('active').notNull().default(true),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => [
   unique().on(table.classId, table.subjectId),
