@@ -15,6 +15,12 @@ async function run() {
   const parsed = parseRosterWorkbook(staffFile, 'staff');
   assert.equal(parsed[0]!.identifier, '001'); checks++;
   assert.equal(validateRosterRows(parsed, []).length, 1); checks++;
+  const titleless = { firstName: 'Lerato', surname: 'Dlamini', identifier: '0009' };
+  assert.deepEqual(validateRosterRows([titleless], [], 'learners'), []); checks++;
+  assert.ok(validateRosterRows([titleless], [], 'staff')[0]!.errors.includes('Title is required')); checks++;
+  const titlelessFile = workbook([['firstName','surname','admissionNumber'],['Lerato','Dlamini','0009']]);
+  assert.deepEqual(parseRosterWorkbook(titlelessFile, 'learners'), [titleless]); checks++;
+  assert.deepEqual(parseRosterWorkbook(workbook([['title','firstName','surname','admissionNumber'],['Ms','Lerato','Dlamini','0009']]), 'learners'), [titleless]); checks++;
   assert.throws(() => parseRosterWorkbook(workbook([['title','firstName','surname'],['Mr','John','Doe']]), 'staff'), RosterImportError); checks++;
   assert.throws(() => parseRosterWorkbook(workbook([['title','firstName','surname','staffNumber']]), 'staff'), RosterImportError); checks++;
   assert.equal(validateRosterRows([parsed[0]!, { ...parsed[0]!, identifier: ' 001 ' }], []).length, 2); checks++;
@@ -46,11 +52,12 @@ async function run() {
     await assert.rejects(saveRoster(school!.id, 'staff', [{...parsed[0]!,identifier:'003'}, parsed[0]!], undefined, tx), RosterImportError);
     assert.equal((await tx.select().from(people).where(eq(people.schoolId, school!.id))).length, 2); checks++;
     await assert.rejects(saveRoster(school!.id, 'staff', [{...parsed[0]!,identifier:'a'},{...parsed[0]!,identifier:'A'}], undefined, tx), RosterImportError); checks++;
-    const learnerFile = workbook([['title','firstName','surname','admissionNumber'],['Ms','Lerato','Dlamini','0009']]);
+    const learnerFile = titlelessFile;
     const learnerPreview = await previewRoster(school!.id, 'learners', learnerFile, cls!.id, tx);
     assert.equal((await tx.select().from(learners).where(eq(learners.schoolId, school!.id))).length, 0); checks++;
     await saveRoster(school!.id, 'learners', learnerPreview.rows, cls!.id, tx);
     const [learner] = await tx.select().from(learners).where(eq(learners.schoolId, school!.id));
+    assert.equal(Object.hasOwn(learner!, 'title'), false); checks++;
     assert.equal(learner!.classId, cls!.id); assert.equal(learner!.admissionNumber, '0009'); assert.equal(learner!.accountSetUp, false); checks++;
     await assert.rejects(previewRoster(school!.id, 'learners', learnerFile, otherClass!.id, tx), RosterImportError); checks++;
     await assert.rejects(saveRoster(school!.id, 'learners', [{...learnerPreview.rows[0]!, identifier:'0010'}], otherClass!.id, tx), RosterImportError); checks++;

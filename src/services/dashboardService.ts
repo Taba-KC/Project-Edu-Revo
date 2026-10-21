@@ -11,7 +11,7 @@ export async function getDashboard(role: DashboardRole, accountId: number, schoo
     if (!school) throw new DashboardError('School not found');
     const [account] = role === 'staff'
       ? await tx.select({ id: people.id, firstName: people.firstName, surname: people.surname, title: people.title, username: people.username, number: people.staffNumber, accountSetUp: people.accountSetUp }).from(people).where(and(eq(people.id, accountId), eq(people.schoolId, schoolId)))
-      : await tx.select({ id: learners.id, firstName: learners.firstName, surname: learners.surname, title: learners.title, username: learners.username, number: learners.admissionNumber, accountSetUp: learners.accountSetUp }).from(learners).where(and(eq(learners.id, accountId), eq(learners.schoolId, schoolId)));
+      : await tx.select({ id: learners.id, firstName: learners.firstName, surname: learners.surname, username: learners.username, number: learners.admissionNumber, accountSetUp: learners.accountSetUp }).from(learners).where(and(eq(learners.id, accountId), eq(learners.schoolId, schoolId)));
     if (!account) throw new DashboardError('Account not found');
     if (!account.accountSetUp) throw new DashboardError('Claim your account before signing in.', 403);
     const [learnerClass] = role === 'learner' ? await tx.select({ id: classes.id, name: classes.name, gradeId: grades.id, gradeNumber: grades.number, streamId: classes.streamId }).from(learners)

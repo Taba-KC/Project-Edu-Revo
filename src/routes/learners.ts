@@ -13,7 +13,6 @@ import { requireAuth, requirePrincipal } from '../middleware/auth';
 const router = Router();
 
 const addLearnerSchema = z.object({
-  title:           z.string().min(1),
   firstName:       z.string().min(1),
   surname:         z.string().min(1),
   admissionNumber: z.string().min(1),
@@ -69,7 +68,7 @@ router.post('/learners/onboarding/lookup', async (req, res) => {
   if (!learner) return res.status(404).json({ error: 'No matching record found' });
   if (learner.accountSetUp) return res.status(400).json({ error: 'Account already set up' });
 
-  return res.json({ title: learner.title, firstName: learner.firstName, surname: learner.surname });
+  return res.json({ firstName: learner.firstName, surname: learner.surname });
 });
 
 // Learner onboarding — claim account and set username + password

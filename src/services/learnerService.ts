@@ -3,7 +3,6 @@ import { learners, schools } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
 
 export async function addLearner(data: {
-  title: string;
   firstName: string;
   surname: string;
   admissionNumber: string;
@@ -41,7 +40,7 @@ export async function completeLearnerOnboarding(learnerId: number, username: str
 }
 
 export async function bulkAddLearners(
-  learners: { title: string; firstName: string; surname: string; admissionNumber: string }[],
+  learners: { firstName: string; surname: string; admissionNumber: string }[],
   schoolId: number,
   classId: number,
 ) {

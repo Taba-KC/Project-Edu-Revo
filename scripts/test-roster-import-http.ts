@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as XLSX from 'xlsx';
 import app from '../src/app';
 import { db, pool } from '../src/db';
-import { people, classes, grades, learners } from '../src/db/schema';
+import { people, classes, grades, learners, schools } from '../src/db/schema';
 import { and, eq, sql } from 'drizzle-orm';
 import { generateAccessToken } from '../src/services/authService';
 
@@ -34,10 +34,20 @@ async function run() {
     const [cls] = await db.select({id:classes.id}).from(classes).innerJoin(grades,eq(grades.id,classes.gradeId)).where(eq(grades.schoolId,principal.schoolId)).limit(1);
     if (cls) {
       const learnerBefore = await db.select({ count: sql<number>`count(*)::int` }).from(learners).where(eq(learners.schoolId,principal.schoolId));
-      const learnerBook=XLSX.utils.book_new();XLSX.utils.book_append_sheet(learnerBook,XLSX.utils.aoa_to_sheet([['title','firstName','surname','admissionNumber'],['Ms','Preview','Only','LEARNER-PREVIEW']]),'Learners');
+      const learnerBook=XLSX.utils.book_new();XLSX.utils.book_append_sheet(learnerBook,XLSX.utils.aoa_to_sheet([['firstName','surname','admissionNumber'],['Preview','Only','LEARNER-PREVIEW']]),'Learners');
       const learnerForm=new FormData();learnerForm.append('file',new Blob([XLSX.write(learnerBook,{type:'buffer',bookType:'xlsx'})]),'learners.xlsx');
-      assert.equal((await fetch(url+'/schools/'+principal.schoolId+'/classes/'+cls.id+'/learners/import/preview',{method:'POST',headers:{Authorization:'Bearer '+token},body:learnerForm})).status,200); checks++;
+      const learnerResponse = await fetch(url+'/schools/'+principal.schoolId+'/classes/'+cls.id+'/learners/import/preview',{method:'POST',headers:{Authorization:'Bearer '+token},body:learnerForm});
+      assert.equal(learnerResponse.status,200); checks++;
+      const learnerPreview = await learnerResponse.json() as {rows: Record<string, unknown>[]};
+      assert.equal(Object.hasOwn(learnerPreview.rows[0]!, 'title'), false); checks++;
       assert.deepEqual(await db.select({ count: sql<number>`count(*)::int` }).from(learners).where(eq(learners.schoolId,principal.schoolId)),learnerBefore);checks++;
+      const [candidate] = await db.select({ schoolCode: schools.code, admissionNumber: learners.admissionNumber, firstName: learners.firstName, surname: learners.surname })
+        .from(learners).innerJoin(schools, eq(schools.id, learners.schoolId)).where(and(eq(learners.schoolId, principal.schoolId), eq(learners.accountSetUp, false))).limit(1);
+      if (candidate) {
+        const lookup = await fetch(url+'/learners/onboarding/lookup', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ schoolCode:candidate.schoolCode, admissionNumber:candidate.admissionNumber, initials:(candidate.firstName[0]+candidate.surname[0]).toUpperCase() }) });
+        assert.equal(lookup.status,200);
+        assert.deepEqual(await lookup.json(), {firstName:candidate.firstName,surname:candidate.surname}); checks++;
+      }
     }
     console.log(checks+' roster API checks passed; no records created.');
   } finally { await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve())); }

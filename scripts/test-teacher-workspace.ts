@@ -33,7 +33,7 @@ async function run(){let checks=0;const rollback=new Error('Rollback teacher wor
  const customId=progress.customConcepts[0]!.id;await savePlan(caller,allocation!.id,{chapterId:chapter!.id,date:'2026-10-10',conceptIds:[customId]},tx);assert.ok(!progress.taughtConceptIds.includes(customId));checks++;
  await assert.rejects(confirmPlan(caller,plan.id,[first!.id],tx),TeacherError);checks++;
  const replan=await savePlan(caller,allocation!.id,{chapterId:chapter!.id,date:'2026-10-09',conceptIds:[first!.id]},tx);await confirmPlan(caller,replan.id,[first!.id],tx,new Date('2026-10-10'));assert.equal((await getPlanning(caller,allocation!.id,tx)).chapter!.taught,1);checks++;
- const [learner]=await tx.insert(learners).values({title:'Ms',firstName:'Private',surname:'Learner',admissionNumber:'1',schoolId:school!.id,classId:cls!.id,accountSetUp:true}).returning();
+ const [learner]=await tx.insert(learners).values({firstName:'Private',surname:'Learner',admissionNumber:'1',schoolId:school!.id,classId:cls!.id,accountSetUp:true}).returning();
  const [latestItem]=await tx.select().from(lessonConcepts).where(eq(lessonConcepts.lessonId,replan.id));await tx.insert(lessonFeedback).values({learnerID:learner!.id,lessonConceptId:latestItem!.id,reaction:'didnt_understand'});
  const flagged=await getPlanning(caller,allocation!.id,tx);assert.equal(flagged.flaggedConcepts[0]!.didntUnderstand,1);assert.ok(!JSON.stringify(flagged).includes('Private'));checks++;
  const question={conceptId:first!.id,body:'Explain inertia',memo:''};const payload={dueDate:'2030-01-01T12:00:00Z',memoReleaseType:'at_due_date' as const,questions:[question]};

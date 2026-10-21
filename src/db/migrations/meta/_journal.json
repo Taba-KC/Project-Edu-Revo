@@ -134,6 +134,13 @@
       "when": 1787104800000,
       "tag": "0018_teacher_custom_concept_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792533600000,
+      "tag": "0019_remove_learner_titles",
+      "breakpoints": true
     }
   ]
 }

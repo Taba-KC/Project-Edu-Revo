@@ -1,0 +1,1 @@
+ALTER TABLE "learners" DROP COLUMN IF EXISTS "title";

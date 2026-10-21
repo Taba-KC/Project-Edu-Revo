@@ -13,7 +13,7 @@ async function run() {
     const [grade] = await tx.select().from(grades).where(and(eq(grades.schoolId, school!.id), eq(grades.number, 11)));
     const [cls, sibling] = await tx.insert(classes).values([{ gradeId: grade!.id, name: '11A' }, { gradeId: grade!.id, name: '11B' }]).returning();
     const [teacher, unassigned, chapterTeacher, unclaimed] = await tx.insert(people).values(['T','U','C','N'].map(number => ({ schoolId: school!.id, title: 'Mr', firstName: number, surname: 'Test', staffNumber: number, username: key+number, passwordHash: 'DO-NOT-EXPOSE', accountSetUp: number !== 'N' }))).returning();
-    const [learner, otherLearner] = await tx.insert(learners).values([cls!, sibling!].map((c,i) => ({ schoolId: school!.id, classId: c.id, title: 'Ms', firstName: 'Learner', surname: 'Test', admissionNumber: String(i), accountSetUp: true }))).returning();
+    const [learner, otherLearner] = await tx.insert(learners).values([cls!, sibling!].map((c,i) => ({ schoolId: school!.id, classId: c.id, firstName: 'Learner', surname: 'Test', admissionNumber: String(i), accountSetUp: true }))).returning();
     const [subject] = await tx.insert(subjects).values({ name: key }).returning();
     const [allocation, otherAllocation] = await tx.insert(classSubjects).values([{ classId: cls!.id, subjectId: subject!.id, personId: teacher!.id }, { classId: sibling!.id, subjectId: subject!.id, personId: unassigned!.id, active: false }]).returning();
     const [chapter, handedOver] = await tx.insert(chapters).values([{ subjectId: subject!.id, gradeNumber: 11, name: 'Mechanics', orderIndex: 1 }, { subjectId: subject!.id, gradeNumber: 11, name: 'Chemistry', orderIndex: 2 }, { subjectId: subject!.id, gradeNumber: 10, name: 'WRONG GRADE', orderIndex: 1 }]).returning();
