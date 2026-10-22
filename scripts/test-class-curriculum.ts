@@ -2,7 +2,7 @@ import 'dotenv/config';
 import assert from 'node:assert/strict';
 import { and, eq } from 'drizzle-orm';
 import { db, pool } from '../src/db';
-import { circuits, schools, grades, classes, subjects, classSubjects, chapters, topics, concepts } from '../src/db/schema';
+import { circuits, schools, grades, classes, subjects, classSubjects, chapters, topics, concepts, lessons, lessonConcepts } from '../src/db/schema';
 import { getClassCurriculum } from '../src/services/classCurriculumService';
 import { SetupError } from '../src/services/classSubjectService';
 
@@ -37,12 +37,12 @@ async function run() {
         { chapterId: archived!.id, name: 'Archived chapter topic', orderIndex: 1 },
         { chapterId: second!.id, name: 'Inactive topic', orderIndex: 1, active: false },
       ]).returning();
-      await tx.insert(concepts).values([
+      const [concept2, concept1, inactiveConcept, customConcept] = await tx.insert(concepts).values([
         { chapterId: first!.id, topicId: topic1!.id, name: 'Second concept', orderIndex: 2 },
         { chapterId: first!.id, topicId: topic1!.id, name: 'First concept', orderIndex: 1 },
         { chapterId: first!.id, topicId: topic1!.id, name: 'Inactive concept', orderIndex: 3, active: false },
         { chapterId: first!.id, topicId: topic2!.id, name: 'Custom concept', orderIndex: 1, isCustom: true },
-      ]);
+      ]).returning();
       const result = await getClassCurriculum(school!.id, cls!.id, allocation!.id, tx);
       assert.equal(result.gradeNumber, 11); assert.equal(result.subjectId, subject!.id); checks++;
       assert.deepEqual(result.chapters.map(c => c.name), ['First chapter', 'Second chapter']); checks++;
@@ -50,8 +50,34 @@ async function run() {
       assert.deepEqual(result.chapters[0]!.topics[0]!.concepts.map(c => c.name), ['First concept', 'Second concept']); checks++;
       assert.equal(result.chapters[0]!.topics[1]!.concepts.length, 0); assert.equal(result.chapters[1]!.topics.length, 0); checks++;
       assert.equal(result.className, cls!.name); assert.equal(result.subjectName, subject!.name); checks++;
+      assert.deepEqual(result.coverage, { totalConcepts: 2, taughtConcepts: 0, percentage: 0 }); checks++;
+      assert.ok(result.chapters[0]!.topics[0]!.concepts.every(concept => !concept.isTaught)); checks++;
+      const [siblingAllocation] = await tx.insert(classSubjects).values({ classId: sibling!.id, subjectId: subject!.id }).returning();
+      const [confirmed, repeated, planned, siblingLesson] = await tx.insert(lessons).values([
+        { classSubjectId: allocation!.id, chapterId: first!.id, date: '2026-01-01', status: 'confirmed' },
+        { classSubjectId: allocation!.id, chapterId: first!.id, date: '2026-01-02', status: 'confirmed' },
+        { classSubjectId: allocation!.id, chapterId: first!.id, date: '2026-01-03', status: 'planned' },
+        { classSubjectId: siblingAllocation!.id, chapterId: first!.id, date: '2026-01-01', status: 'confirmed' },
+      ]).returning();
+      await tx.insert(lessonConcepts).values([
+        { lessonId: confirmed!.id, conceptId: concept1!.id },
+        { lessonId: repeated!.id, conceptId: concept1!.id },
+        { lessonId: confirmed!.id, conceptId: inactiveConcept!.id },
+        { lessonId: confirmed!.id, conceptId: customConcept!.id },
+        { lessonId: planned!.id, conceptId: concept2!.id },
+        { lessonId: siblingLesson!.id, conceptId: concept2!.id },
+      ]);
+      const partial = await getClassCurriculum(school!.id, cls!.id, allocation!.id, tx);
+      assert.deepEqual(partial.coverage, { totalConcepts: 2, taughtConcepts: 1, percentage: 50 }); checks++;
+      assert.deepEqual(partial.chapters[0]!.topics[0]!.concepts.map(concept => concept.isTaught), [true, false]); checks++;
+      const siblingCoverage = await getClassCurriculum(school!.id, sibling!.id, siblingAllocation!.id, tx);
+      assert.deepEqual(siblingCoverage.chapters[0]!.topics[0]!.concepts.map(concept => concept.isTaught), [false, true]); checks++;
+      await tx.update(lessons).set({ status: 'confirmed' }).where(eq(lessons.id, planned!.id));
+      const complete = await getClassCurriculum(school!.id, cls!.id, allocation!.id, tx);
+      assert.deepEqual(complete.coverage, { totalConcepts: 2, taughtConcepts: 2, percentage: 100 }); checks++;
       const empty = await getClassCurriculum(school!.id, cls!.id, emptyAllocation!.id, tx);
       assert.equal(empty.gradeNumber, 11); assert.deepEqual(empty.chapters, []); checks++;
+      assert.deepEqual(empty.coverage, { totalConcepts: 0, taughtConcepts: 0, percentage: 0 }); checks++;
       await assert.rejects(getClassCurriculum(other!.id, cls!.id, allocation!.id, tx), SetupError); checks++;
       await assert.rejects(getClassCurriculum(school!.id, sibling!.id, allocation!.id, tx), SetupError); checks++;
       await tx.update(classSubjects).set({ active: false }).where(eq(classSubjects.id, allocation!.id));

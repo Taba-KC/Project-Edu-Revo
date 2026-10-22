@@ -10,7 +10,6 @@ export const classes = pgTable('classes', {
   classTeacherId:  integer('class_teacher_id').references(() => people.id),
   name:            text('name').notNull(),
   description:     text('description'),
-  profileImageUrl: text('profile_image_url'),
   createdAt:       timestamp('created_at').defaultNow().notNull(),
 }, (table) => [
   unique().on(table.gradeId, table.name),

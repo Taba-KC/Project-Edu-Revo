@@ -3,8 +3,6 @@ import { classes, grades, learners, people, streams } from '../db/schema';
 import { eq, and, count, sql } from 'drizzle-orm';
 import type { PoolClient } from 'pg';
 import { syncClassSubjects } from './classSubjectService';
-import fs from 'fs';
-import path from 'path';
 
 export interface ClassInput {
   gradeId: number;
@@ -12,7 +10,6 @@ export interface ClassInput {
   streamId?: number | null;
   classTeacherId?: number | null;
   description?: string | null;
-  profileImageUrl?: string | null;
 }
 
 export interface ClassUpdateInput {
@@ -20,7 +17,6 @@ export interface ClassUpdateInput {
   streamId?: number | null;
   classTeacherId?: number | null;
   description?: string | null;
-  profileImageUrl?: string | null;
 }
 
 export class InvalidClassNameError extends Error {}
@@ -78,7 +74,6 @@ export async function getClassesByGrade(gradeId: number) {
       classTeacherId: classes.classTeacherId,
       name: classes.name,
       description: classes.description,
-      profileImageUrl: classes.profileImageUrl,
       createdAt: classes.createdAt,
       classTeacherTitle: people.title,
       classTeacherFirstName: people.firstName,
@@ -96,7 +91,6 @@ export async function getClassesByGrade(gradeId: number) {
       classes.classTeacherId,
       classes.name,
       classes.description,
-      classes.profileImageUrl,
       classes.createdAt,
       people.title,
       people.firstName,
@@ -136,15 +130,6 @@ export async function updateClass(classId: number, data: ClassUpdateInput) {
     if (data.streamId !== undefined) await syncClassSubjects(tx, classId);
     return updated;
   });
-}
-
-export async function updateClassProfileImage(classId: number, profileImageUrl: string) {
-  const [updated] = await db.update(classes)
-    .set({ profileImageUrl })
-    .where(eq(classes.id, classId))
-    .returning();
-  if (!updated) throw new Error('Class not found');
-  return updated;
 }
 
 export async function deleteClassContents(client: PoolClient, classIds: number[]) {
@@ -242,30 +227,14 @@ export async function deleteClassContents(client: PoolClient, classIds: number[]
   await client.query("DELETE FROM announcements WHERE audience_type = 'class' AND audience_id = ANY($1::int[])", [classIds]);
 }
 
-export async function deleteClassProfileFiles(profileImageUrls: Array<string | null>) {
-  await Promise.all(profileImageUrls.map(async (url) => {
-    if (!url?.startsWith('/uploads/class-profiles/')) return;
-
-    const filePath = path.join(process.cwd(), url.replace(/^\//, ''));
-    try {
-      await fs.promises.unlink(filePath);
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-        console.warn(`Failed to delete class profile image: ${filePath}`);
-      }
-    }
-  }));
-}
-
 export async function deleteClassById(classId: number, gradeId: number, schoolId: number) {
   const client = await pool.connect();
-  let profileImageUrls: Array<string | null> = [];
   try {
     await client.query('BEGIN');
 
     const classResult = await client.query(
       `
-        SELECT c.id, c.profile_image_url
+        SELECT c.id
         FROM classes c
         JOIN grades g ON g.id = c.grade_id
         WHERE c.id = $1 AND c.grade_id = $2 AND g.school_id = $3
@@ -277,13 +246,10 @@ export async function deleteClassById(classId: number, gradeId: number, schoolId
       throw new ClassNotFoundError('Class not found');
     }
 
-    profileImageUrls = classResult.rows.map((row) => row.profile_image_url as string | null);
-
     await deleteClassContents(client, [classId]);
     await client.query('DELETE FROM classes WHERE id = $1 AND grade_id = $2', [classId, gradeId]);
 
     await client.query('COMMIT');
-    await deleteClassProfileFiles(profileImageUrls);
     return { id: classId };
   } catch (err) {
     await client.query('ROLLBACK');

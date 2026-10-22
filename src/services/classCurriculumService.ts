@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db';
-import { classes, grades, classSubjects, subjects } from '../db/schema';
+import { classes, grades, classSubjects, subjects, lessons, lessonConcepts } from '../db/schema';
 import { getCurriculum } from './curriculumService';
 import { SetupError } from './classSubjectService';
 
@@ -12,6 +12,24 @@ export async function getClassCurriculum(schoolId: number, classId: number, clas
       .innerJoin(classes, eq(classes.id, classSubjects.classId)).innerJoin(grades, eq(grades.id, classes.gradeId))
       .where(and(eq(grades.schoolId, schoolId), eq(classes.id, classId), eq(classSubjects.id, classSubjectId), eq(classSubjects.active, true)));
     if (!allocation) throw new SetupError('Active class subject not found', 404);
-    return { ...await getCurriculum(allocation.subjectId, allocation.gradeNumber, tx), subjectName: allocation.subjectName, className: allocation.className };
+    const curriculum = await getCurriculum(allocation.subjectId, allocation.gradeNumber, tx);
+    const confirmed = await tx.selectDistinct({ conceptId: lessonConcepts.conceptId })
+      .from(lessonConcepts).innerJoin(lessons, eq(lessons.id, lessonConcepts.lessonId))
+      .where(and(eq(lessons.classSubjectId, classSubjectId), eq(lessons.status, 'confirmed')));
+    const taught = new Set(confirmed.map(row => row.conceptId));
+    let totalConcepts = 0, taughtConcepts = 0;
+    const chapters = curriculum.chapters.map(chapter => ({ ...chapter,
+      topics: chapter.topics.map(topic => ({ ...topic,
+        concepts: topic.concepts.map(concept => {
+          const isTaught = taught.has(concept.id);
+          totalConcepts++;
+          if (isTaught) taughtConcepts++;
+          return { ...concept, isTaught };
+        }),
+      })),
+    }));
+    return { ...curriculum, chapters, subjectName: allocation.subjectName, className: allocation.className,
+      coverage: { totalConcepts, taughtConcepts, percentage: totalConcepts ? Math.round(taughtConcepts / totalConcepts * 1000) / 10 : 0 },
+    };
   }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
 }
