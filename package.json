@@ -19,6 +19,7 @@
     "test:dashboards": "tsx scripts/test-dashboards.ts",
     "test:dashboards-http": "tsx scripts/test-dashboards-http.ts",
     "test:teacher-workspace": "tsx scripts/test-teacher-workspace.ts",
+    "test:lesson-feedback": "tsx scripts/test-lesson-feedback.ts",
     "test:teacher-workspace-http": "tsx scripts/test-teacher-workspace-http.ts"
   },
   "repository": {

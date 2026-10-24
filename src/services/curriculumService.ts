@@ -6,15 +6,16 @@ import { chapters, topics, concepts, curriculumLibraries, subjects, classes, gra
 export class CurriculumError extends Error { constructor(message: string, public status = 400) { super(message); } }
 const label = z.string().trim().min(1).max(1000);
 const identity = { id: z.number().int().positive().optional(), name: label };
+export const conceptGuidanceSchema = z.object({ prerequisites: z.array(label).max(5).optional(), learningOutcomes: z.array(label).max(5).optional() });
 export const curriculumSchema = z.object({
   subjectId: z.number().int().positive(), gradeNumber: z.number().int().min(8).max(12), revision: z.number().int().min(0),
   chapters: z.array(z.object({ ...identity, topics: z.array(z.object({ ...identity,
-    concepts: z.array(z.object(identity)).max(2000),
+    concepts: z.array(z.object({ ...identity, ...conceptGuidanceSchema.shape })).max(2000),
   })).max(100) })).min(1).max(100),
 });
 export type CurriculumInput = z.infer<typeof curriculumSchema>;
 const key = (name: string) => name.trim().replace(/\s+/g, ' ').toLowerCase();
-type PreviewChapter = { name: string; topics: { name: string; concepts: { name: string }[] }[] };
+type PreviewChapter = { name: string; topics: { name: string; concepts: { name: string; prerequisites?: string[]; learningOutcomes?: string[] }[] }[] };
 function similar(a: string, b: string) {
   if (Math.abs(a.length - b.length) > 2 || Math.min(a.length, b.length) < 8) return false;
   let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
@@ -44,6 +45,27 @@ export function previewWorkbook(buffer: Buffer) {
       }
       return String(cell?.v ?? '').trim();
     };
+    if (key(read(0, 0)) === 'chapter' && key(read(0, 1)) === 'topic' && key(read(0, 2)) === 'concept') {
+      const headers = ['Chapter', 'Topic', 'Concept', ...Array.from({ length: 5 }, (_, i) => 'Prerequisite ' + (i + 1)), ...Array.from({ length: 5 }, (_, i) => 'Learning outcome ' + (i + 1))];
+      for (let c = 0; c <= Math.max(range.e.c, 12); c++) {
+        if (key(read(0, c)) !== key(headers[c] ?? '')) throw new CurriculumError('Use the 13 template columns: Chapter, Topic, Concept, Prerequisite 1–5, Learning outcome 1–5.');
+      }
+      for (let r = 1; r <= range.e.r; r++) {
+        for (let c = 13; c <= range.e.c; c++) if (read(r, c)) throw new CurriculumError('Use at most five prerequisites and five learning outcomes. Extra data was found in row ' + (r + 1) + '.');
+        const values = headers.map((_, c) => read(r, c));
+        if (values.every(value => !value)) continue;
+        if (!values[0] || !values[1] || !values[2]) throw new CurriculumError('Row ' + (r + 1) + ' needs Chapter, Topic and Concept.');
+        if (values.some(value => value.length > 1000)) throw new CurriculumError('Use at most 1,000 characters per cell.');
+        let chapter = result.find(chapter => key(chapter.name) === key(values[0]));
+        if (!chapter) { chapter = { name: values[0], topics: [] }; result.push(chapter); }
+        let topic = chapter.topics.find(topic => key(topic.name) === key(values[1]));
+        if (!topic) { topic = { name: values[1], concepts: [] }; chapter.topics.push(topic); }
+        if (topic.concepts.some(concept => key(concept.name) === key(values[2]))) throw new CurriculumError('Repeated concept in row ' + (r + 1) + '. Use one row per concept.');
+        topic.concepts.push({ name: values[2], prerequisites: values.slice(3, 8).filter(Boolean), learningOutcomes: values.slice(8, 13).filter(Boolean) });
+      }
+      if (!result.length) throw new CurriculumError('Add at least one concept below the headers.');
+      return { name, chapters: result, warnings: [] };
+    }
     for (let c = 0; c <= range.e.c; c++) {
       const chapterName = read(0, c), topicName = read(1, c);
       const items: { name: string }[] = [];
@@ -72,10 +94,13 @@ export async function getCurriculum(subjectId: number, gradeNumber: number, data
     const topicRows = rows.length ? await tx.select().from(topics).where(and(inArray(topics.chapterId, rows.map(r => r.id)), eq(topics.active, true))).orderBy(topics.orderIndex, topics.id) : [];
     const items = topicRows.length ? await tx.select().from(concepts).where(and(inArray(concepts.topicId, topicRows.map(t => t.id)), eq(concepts.active, true), eq(concepts.isCustom, false))).orderBy(concepts.orderIndex, concepts.id) : [];
     return { subjectId, gradeNumber, revision: library?.revision ?? 0, exists: !!library || rows.length > 0,
-      chapters: rows.map(ch => ({ id: ch.id, name: ch.name, topics: topicRows.filter(t => t.chapterId === ch.id).map(t => ({ id: t.id, name: t.name, concepts: items.filter(c => c.topicId === t.id).map(c => ({ id: c.id, name: c.name })) })) })) };
+      chapters: rows.map(ch => ({ id: ch.id, name: ch.name, topics: topicRows.filter(t => t.chapterId === ch.id).map(t => ({ id: t.id, name: t.name, concepts: items.filter(c => c.topicId === t.id).map(c => ({ id: c.id, name: c.name, prerequisites: c.prerequisites, learningOutcomes: c.learningOutcomes })) })) })) };
   }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
 }
 export async function saveCurriculum(input: CurriculumInput, database: Pick<typeof db, 'transaction'> = db) {
+  const parsed = curriculumSchema.safeParse(input);
+  if (!parsed.success) throw new CurriculumError('Check curriculum labels and use at most five prerequisites and five learning outcomes per concept.');
+  input = parsed.data;
   return database.transaction(async tx => {
     await tx.execute(sql`select pg_advisory_xact_lock(7411, 0)`);
     const [subject] = await tx.select().from(subjects).where(eq(subjects.id, input.subjectId));
@@ -127,8 +152,10 @@ export async function saveCurriculum(input: CurriculumInput, database: Pick<type
         else { const [row] = await tx.insert(topics).values({ chapterId, name: topic.name, orderIndex: j + 1 }).returning(); topicId = row.id; }
         const savedConcepts = [];
         for (const [k, concept] of topic.concepts.entries()) {
-          if (concept.id) { await tx.update(concepts).set({ name: concept.name, orderIndex: k + 1 }).where(eq(concepts.id, concept.id)); savedConcepts.push({ id: concept.id, name: concept.name }); }
-          else { const [row] = await tx.insert(concepts).values({ chapterId, topicId, name: concept.name, orderIndex: k + 1 }).returning(); savedConcepts.push({ id: row.id, name: row.name }); }
+          const previous = oldConcepts.find(row => row.id === concept.id);
+          const guidance = { prerequisites: concept.prerequisites ?? previous?.prerequisites ?? [], learningOutcomes: concept.learningOutcomes ?? previous?.learningOutcomes ?? [] };
+          if (concept.id) { await tx.update(concepts).set({ name: concept.name, orderIndex: k + 1, ...guidance }).where(eq(concepts.id, concept.id)); savedConcepts.push({ id: concept.id, name: concept.name, ...guidance }); }
+          else { const [row] = await tx.insert(concepts).values({ chapterId, topicId, name: concept.name, orderIndex: k + 1, ...guidance }).returning(); savedConcepts.push({ id: row.id, name: row.name, ...guidance }); }
         }
         savedTopics.push({ id: topicId, name: topic.name, concepts: savedConcepts });
       }

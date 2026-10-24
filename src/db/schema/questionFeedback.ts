@@ -36,11 +36,8 @@ export const questionFeedback = pgTable('question_feedback', {
  * memoRevealed — whether the learner has tapped "Reveal answer." 
     - A learner can only do this after the teacher's chosen memo release time has passed. 
     - Tracking this separately from isDone reflects the two distinct deliberate steps in the flow.
- * reaction — either "understood" or "didnt_get_it", recorded after the learner reveals the memo and checks their work. 
-    - null until that step happens, hence no .notNull(). 
-    - Also null permanently if the question has no memo.
- * isAnonymous — applies only to the reaction. 
-    - Whether the teacher sees the learner's name alongside their understood/didn't-get-it judgment.
+ * reaction and isAnonymous — historical homework reaction fields retained to preserve existing records.
+    - Homework reaction submission and aggregation have been removed. Understanding feedback belongs to lesson concepts.
  * createdAt — when the record was first created.
  * updatedAt — when it was last changed.
 

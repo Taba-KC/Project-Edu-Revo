@@ -1,11 +1,14 @@
-import { pgTable, serial, integer, timestamp, unique } from 'drizzle-orm/pg-core';
+import { pgTable, serial, integer, timestamp, unique, jsonb } from 'drizzle-orm/pg-core';
 import { lessons } from './lessons';
 import { concepts } from './concepts';
+import type { LessonBriefContent } from '../../services/lessonBrief';
+export type LessonConceptBrief = LessonBriefContent & { conceptName: string };
 
 export const lessonConcepts = pgTable('lesson_concepts', {
   id:         serial('id').primaryKey(),
   lessonId:   integer('lesson_id').notNull().references(() => lessons.id),
   conceptId:  integer('concept_id').notNull().references(() => concepts.id),
+  teachingBrief: jsonb('teaching_brief').$type<LessonConceptBrief>(),
   createdAt:  timestamp('created_at').defaultNow().notNull(),
 }, (table) => [
   unique().on(table.lessonId, table.conceptId),

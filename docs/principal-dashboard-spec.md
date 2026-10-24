@@ -39,7 +39,7 @@ The principal mostly owns school-level setup.
 
 There is currently some overlap with curriculum setup because the backend allows principals to create/import chapters and concepts. That may be correct for MVP, but it is an important product decision.
 
-Teacher and learner flows such as lesson planning, homework creation, lesson feedback, homework feedback, and aggregated teacher feedback are not principal-first workflows. The principal may later need oversight analytics, but the full operational workflow belongs to teachers and learners.
+Teacher and learner flows such as lesson planning, homework creation, lesson feedback, and aggregated teacher feedback are not principal-first workflows. The principal may later need oversight analytics, but the full operational workflow belongs to teachers and learners.
 
 ## 3. Core Mental Model
 
@@ -212,7 +212,7 @@ Example:
   - Newton's First Law
   - Newton's Second Law
 
-Lessons and homework feedback eventually trace back to concepts.
+Lesson feedback and homework questions trace back to concepts.
 
 ### Class Chapter
 
@@ -579,7 +579,7 @@ These are more teacher/learner app responsibilities:
 - Teacher creating homework.
 - Learner previewing concepts before lesson.
 - Learner giving post-lesson feedback.
-- Learner doing homework feedback.
+- Learner giving lesson feedback.
 - Teacher viewing detailed lesson feedback.
 
 The principal may later need summary analytics, but not the full operational teacher workflow.
@@ -709,3 +709,15 @@ All operations verify the current school, active subject-class allocation and ch
 AI uses the backend-only OPENAI_API_KEY and OPENAI_MODEL (default gpt-4.1-mini), with the Responses API, strict structured output, store:false, a timeout, bounded question counts and a per-teacher process-local rate limit. Only curriculum labels/question text and teacher correction notes are sent, without learner identities. The local ignored environment file contains the key; the frontend and repository do not. Distributed rate limiting remains future deployment work.
 
 Validation: 28 rolled-back teacher workflow checks, 11 authenticated HTTP checks without writes or AI calls, dashboard and class curriculum regressions, frontend TypeScript/lint and backend compilation. A separate live AI check successfully generated a question and worked memo without writing database records. Browser visual verification was unavailable in this session.
+
+### Teacher books and lesson feedback (updated 2026-10-24)
+
+Prerequisites and learning outcomes are shared curriculum fields on concepts (migration 0024), with zero to five non-empty items of each kind. Lesson planning reads these fields directly, without AI generation or per-class overrides. The app manager can edit or clear them alongside concept names after saving, with stable IDs and curriculum revision checks. New imports support one concept per row: Chapter, Topic, Concept, Prerequisite 1-5, Learning outcome 1-5; the original topic-column format remains supported. The reviewed local enrichment script populated the 23 existing shared concepts across Mathematics Grade 10 and Physical Sciences Grade 11. Planned lessons reflect the current shared guidance; confirming teaching freezes a historical copy in lesson_concepts.teaching_brief. Earlier confirmed lessons keep their history. The former lesson-brief AI generation endpoint and automatic generation queue have been removed. Homework AI generation is unchanged.
+
+Lessons have permanent numbers within each class subject, in creation order: Lesson 1, Lesson 2, and so on. Migration 0022 backfills existing records by creation timestamp/id. A database insert trigger increments an allocation counter, so every creation path receives a unique number and date changes or deleted lessons do not renumber existing lessons. The homework composer shows “You are creating homework for: Lesson N - date” with a Pick another lesson action. Questions appear as compact summaries with one truncated line each for concept, question and memo; View opens the complete editing and memo-correction tools in a dialog. Changes in the dialog require Save.
+
+The teacher bookshelf contains exactly Lessons, Homework, Curriculum and Announcements. Lessons and Homework start with numerically sorted class pages, then alphabetically sorted subject pages. Every Lessons subject has three children: Plan the next lesson, Confirm taught lesson and See lesson feedback. Every Homework subject has only Create homework. Page headings, contents, list rows, counts, actions and native dialogs use the principal workspace styles. Announcements has one Still under development page.
+
+Create homework lists confirmed lessons with concepts and no existing homework. Homework questions test taught concepts; there are no homework understanding reactions or teacher homework-feedback pages. See lesson feedback has a title-row selector for the last ten confirmed lessons in lesson-number order, including lessons without homework. Only the selected lesson's concepts appear, already expanded and sorted from least to most understood; concepts without responses appear last. Learners choose only “I get it” or “I don’t get it” per taught concept. The modal shows these two counts and no-response counts. Sorting uses the proportion of responding learners who get it; ties follow curriculum order. No learner names or identities are returned. Historical “not sure” records remain stored but are excluded from binary counts.
+
+GET /staff/class-subjects/:id/lesson-feedback returns these aggregates. POST /staff/lessons/:id/review-concepts accepts conceptId and adds a taught concept from a confirmed lesson to the earliest owned planned lesson on or after today. With no such plan, it persists a teacher/allocation draft in lesson_review_concepts (migration 0021). The planning response combines the first 10 untaught concepts across all owned chapters with queued review concepts, in curriculum order. Review concepts start checked and can be unchecked. Saving respects the explicit selection and consumes the suggestions shown in that form, including declined ones, without changing original confirmed lesson records or taught coverage. Suggestions queued in another tab after the form loaded remain pending for the following plan. A single lesson may span chapters, with its primary chapter derived from its first selected concept. Duplicate clicks do not duplicate concepts. Planning, learner response submissions and adding review concepts share an allocation transaction lock; adding to an existing plan also locks its lesson row. Reads of lesson concepts follow chapter, topic and concept order, including review concepts from earlier chapters. Teacher endpoints enforce school, active allocation and chapter ownership. Learner GET /learners/me/lessons/:id/feedback and POST /lesson-feedback enforce school, class, active subject and confirmed-lesson access. Feedback closes once the next lesson has been planned. The old homework-feedback and question-reaction endpoints are removed.

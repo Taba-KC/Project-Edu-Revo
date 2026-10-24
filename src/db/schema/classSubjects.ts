@@ -4,6 +4,7 @@ import { subjects } from './subjects';
 import { people } from './people';
 
 export const classSubjects = pgTable('class_subjects', {
+  lessonCount: integer('lesson_count').notNull().default(0),
   id:        serial('id').primaryKey(),
   classId:   integer('class_id').notNull().references(() => classes.id),
   subjectId: integer('subject_id').notNull().references(() => subjects.id),

@@ -21,7 +21,7 @@ export const lessonFeedback = pgTable('lesson_feedback', {
 /** NOTES */
 
 /*
- * This is Flow 3 — after a lesson, a learner gives one of three reactions to each concept that was taught: "Understood it", "Not sure", or "Didn't understand". 
+ * After a confirmed lesson, learners respond to each taught concept: "I get it" or "I don't get it".
  * Each row records one learner's reaction to one concept from one lesson.
 
     What each column does:
@@ -30,7 +30,7 @@ export const lessonFeedback = pgTable('lesson_feedback', {
  * lessonConceptId — the specific concept from a specific lesson being reacted to. 
      - Pointing to lessonConcepts rather than just concepts is important — 
        - it ties the feedback to a specific lesson, not just the concept in general.
- * reaction — one of three values: "understood", "not_sure", or "didnt_understand".
+ * reaction — new submissions accept "understood" or "didnt_understand". Historical "not_sure" rows remain stored and are excluded from binary counts.
  * isAnonymous — the learner's choice of whether the teacher sees their name or not. 
      - Defaults to true — anonymous by default, as the specification states.
  * createdAt — when the feedback was first submitted.

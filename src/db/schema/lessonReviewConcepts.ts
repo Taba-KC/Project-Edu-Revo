@@ -1,0 +1,13 @@
+import { pgTable, serial, integer, timestamp, unique } from 'drizzle-orm/pg-core';
+import { classSubjects } from './classSubjects';
+import { people } from './people';
+import { concepts } from './concepts';
+
+/** Lesson review concepts waiting for this teacher's next lesson plan. */
+export const lessonReviewConcepts = pgTable('lesson_review_concepts', {
+  id: serial('id').primaryKey(),
+  classSubjectId: integer('class_subject_id').notNull().references(() => classSubjects.id, { onDelete: 'cascade' }),
+  personId: integer('person_id').notNull().references(() => people.id, { onDelete: 'cascade' }),
+  conceptId: integer('concept_id').notNull().references(() => concepts.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, table => [unique('lesson_review_concepts_teacher_concept_unique').on(table.classSubjectId, table.personId, table.conceptId)]);

@@ -6,7 +6,7 @@ import { db, pool } from '../src/db';
 import { subjects, chapters, topics, concepts, classChapters, classSubjects, circuits, schools, grades, classes, people, lessons, lessonConcepts } from '../src/db/schema';
 import { createSubject, DuplicateSubjectError } from '../src/services/subjectService';
 import { getConceptsByChapter } from '../src/services/conceptService';
-import { previewWorkbook, saveCurriculum, CurriculumError, curriculumSchema, type CurriculumInput } from '../src/services/curriculumService';
+import { previewWorkbook, saveCurriculum, getCurriculum, CurriculumError, curriculumSchema, type CurriculumInput } from '../src/services/curriculumService';
 
 async function run() {
  let checks = 0;
@@ -17,6 +17,13 @@ async function run() {
  const bad = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(bad,XLSX.utils.aoa_to_sheet([[''],['Missing heading']]),'Bad');
  assert.throws(()=>previewWorkbook(XLSX.write(bad,{type:'buffer',bookType:'xlsx'})),CurriculumError); checks++;
  assert.equal(curriculumSchema.safeParse({subjectId:1,gradeNumber:11,revision:0,chapters:[{name:' ',concepts:[]}]}).success,false); checks++;
+ const headers=['Chapter','Topic','Concept',...Array.from({length:5},(_,i)=>'Prerequisite '+(i+1)),...Array.from({length:5},(_,i)=>'Learning outcome '+(i+1))];
+ const richBook=XLSX.utils.book_new();XLSX.utils.book_append_sheet(richBook,XLSX.utils.aoa_to_sheet([headers,['Vectors','Direction','Direction of resultant','Identify opposite and adjacent sides','Use inverse tangent','','','','Can you calculate a reference angle?']]),'Curriculum');
+ const rich=previewWorkbook(XLSX.write(richBook,{type:'buffer',bookType:'xlsx'}));
+ assert.deepEqual(rich[0]!.chapters[0]!.topics[0]!.concepts[0]!.prerequisites,['Identify opposite and adjacent sides','Use inverse tangent']);checks++;
+ assert.deepEqual(rich[0]!.chapters[0]!.topics[0]!.concepts[0]!.learningOutcomes,['Can you calculate a reference angle?']);checks++;
+ const tooMany=XLSX.utils.book_new();XLSX.utils.book_append_sheet(tooMany,XLSX.utils.aoa_to_sheet([[...headers,'Prerequisite 6'],['Vectors','Direction','Resultant']]),'Bad');assert.throws(()=>previewWorkbook(XLSX.write(tooMany,{type:'buffer',bookType:'xlsx'})),CurriculumError);checks++;
+ const formulaBook=XLSX.utils.book_new(),formulaSheet=XLSX.utils.aoa_to_sheet([headers,['Vectors','Direction','Resultant']]);formulaSheet.D2={t:'s',f:'A2',v:'Example'};XLSX.utils.book_append_sheet(formulaBook,formulaSheet,'Bad');assert.throws(()=>previewWorkbook(XLSX.write(formulaBook,{type:'buffer',bookType:'xlsx'})),CurriculumError);checks++;
  const rollback = new Error('rollback curriculum tests');
  try { await db.transaction(async tx=>{
    const key='curriculum-test-'+Date.now();
@@ -32,6 +39,13 @@ async function run() {
    assert.equal(saved.revision,1); assert.equal(saved.chapters.length,2); checks++;
    assert.equal(saved.chapters[0]!.topics.length,2); checks++;
    assert.deepEqual((await getConceptsByChapter(saved.chapters[0]!.id!,tx)).map(c=>c.name),['First law','Third law','Free body diagram']); checks++;
+   const guidanceEdit:CurriculumInput=structuredClone(saved);const guided=guidanceEdit.chapters[0]!.topics[0]!.concepts[0]!;
+   guided.prerequisites=['Be able to identify an object and a force.'];guided.learningOutcomes=['Can you explain the first law?'];
+   const withGuidance=await saveCurriculum(guidanceEdit,tx);saved.revision=withGuidance.revision;saved.chapters=withGuidance.chapters;
+   const reloaded=await getCurriculum(subject!.id,11,tx);assert.deepEqual(reloaded.chapters[0]!.topics[0]!.concepts[0]!.prerequisites,guided.prerequisites);checks++;
+   const revised:CurriculumInput=structuredClone(withGuidance);revised.chapters[0]!.topics[0]!.concepts[0]!.prerequisites=[];revised.chapters[0]!.topics[0]!.concepts[0]!.learningOutcomes=['Can you apply the first law?'];
+   const revisedResult=await saveCurriculum(revised,tx);saved.revision=revisedResult.revision;saved.chapters=revisedResult.chapters;assert.equal(saved.chapters[0]!.topics[0]!.concepts[0]!.id,guided.id);assert.deepEqual(saved.chapters[0]!.topics[0]!.concepts[0]!.prerequisites,[]);checks++;
+   const excessive:CurriculumInput=structuredClone(saved);excessive.chapters[0]!.topics[0]!.concepts[0]!.prerequisites=Array(6).fill('Skill');await assert.rejects(saveCurriculum(excessive,tx),CurriculumError);checks++;
    const renamed: CurriculumInput = structuredClone(saved);
    renamed.chapters[0]!.topics[0]!.name = 'Laws renamed';
    renamed.chapters[0]!.topics.reverse();

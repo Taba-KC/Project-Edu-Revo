@@ -148,6 +148,34 @@
       "when": 1792620000000,
       "tag": "0020_remove_class_photos",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1792710000000,
+      "tag": "0021_lesson_review_concepts",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1792796400000,
+      "tag": "0022_lesson_numbers",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1792800000000,
+      "tag": "0023_lesson_concept_briefs",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792803600000,
+      "tag": "0024_shared_concept_guidance",
+      "breakpoints": true
     }
   ]
 }

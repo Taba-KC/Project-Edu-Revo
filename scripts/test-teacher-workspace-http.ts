@@ -9,6 +9,8 @@ async function run(){let checks=0;const server=app.listen(0,'127.0.0.1');await n
  const request=(path:string,token?:string,method='GET',body?:unknown)=>fetch(base+path,{method,headers:{...(token?{Authorization:'Bearer '+token}:{}),'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
  try{
  assert.equal((await request('/staff/class-subjects/1/planning')).status,401);checks++;
+ assert.equal((await request('/staff/class-subjects/1/lesson-feedback')).status,401);checks++;
+ assert.equal((await request('/staff/lessons/1/review-concepts',undefined,'POST',{conceptId:1})).status,401);checks++;
  assert.equal((await request('/staff/class-subjects/1/planning',generateAccessToken(-1,'learner',-1))).status,403);checks++;
  const staff=await db.select({id:people.id,schoolId:people.schoolId}).from(people).where(and(eq(people.accountSetUp,true),eq(people.role,'teacher')));
  let assigned:{token:string;classSubjectId:number;chapterId:number}|null=null;let unassignedToken:string|null=null;
@@ -17,6 +19,10 @@ async function run(){let checks=0;const server=app.listen(0,'127.0.0.1');await n
  if(assigned){
   const path='/staff/class-subjects/'+assigned.classSubjectId;
   const response=await request(path+'/planning',assigned.token);assert.equal(response.status,200);const data=await response.json() as {chapter:{id:number};aiAvailable:boolean};assert.equal(data.chapter.id,assigned.chapterId);checks++;
+  const feedback=await request(path+'/lesson-feedback',assigned.token);assert.equal(feedback.status,200);const sets=await feedback.json() as unknown[];assert.ok(Array.isArray(sets)&&sets.length<=10);checks++;
+  assert.equal((await request('/staff/lessons/2147483647/review-concepts',assigned.token,'POST',{conceptId:1})).status,404);checks++;
+  assert.equal((await request('/staff/lessons/1/review-concepts',assigned.token,'POST',{conceptId:0})).status,400);checks++;
+  if(unassignedToken){assert.equal((await request(path+'/lesson-feedback',unassignedToken)).status,403);checks++;}
   if(unassignedToken){assert.equal((await request(path+'/planning',unassignedToken)).status,403);assert.equal((await request(path+'/plans',unassignedToken,'POST',{chapterId:assigned.chapterId,date:'2026-10-10',conceptIds:[1]})).status,403);checks+=2;}
   assert.equal((await request(path+'/plans',assigned.token,'POST',{chapterId:assigned.chapterId,date:'2026-02-30',conceptIds:[1]})).status,400);checks++;
   assert.equal((await request('/staff/lessons/2147483647/confirm',assigned.token,'PATCH',{conceptIds:[]})).status,404);checks++;
@@ -25,6 +31,10 @@ async function run(){let checks=0;const server=app.listen(0,'127.0.0.1');await n
   assert.equal((await request('/lessons/2147483647/homework',assigned.token,'POST',{})).status,410);checks++;
   assert.equal((await request('/staff/questions/2147483647/memo',assigned.token,'PATCH',{memo:'Answer'})).status,404);checks++;
  }
+ const learnerToken=generateAccessToken(-1,'learner',-1);
+ assert.equal((await request('/lesson-feedback',learnerToken,'POST',{lessonConceptId:1,reaction:'not_sure'})).status,400);checks++;
+ assert.equal((await request('/question-feedback',learnerToken,'POST',{questionId:1,reaction:'understood'})).status,404);checks++;
+ if(assigned){assert.equal((await request('/staff/class-subjects/'+assigned.classSubjectId+'/homework-feedback',assigned.token)).status,404);checks++;}
  console.log(checks+' teacher HTTP checks passed; no records changed or AI requests sent.');
  }finally{await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()));}
 }

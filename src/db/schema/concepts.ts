@@ -1,4 +1,5 @@
-import { pgTable, serial, integer, text, boolean, timestamp, foreignKey } from 'drizzle-orm/pg-core';
+import { pgTable, serial, integer, text, boolean, timestamp, foreignKey, jsonb, check } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { chapters } from './chapters';
 import { topics } from './topics';
 import { classSubjects } from './classSubjects';
@@ -8,12 +9,17 @@ export const concepts = pgTable('concepts', {
   chapterId:  integer('chapter_id').notNull().references(() => chapters.id),
   topicId: integer('topic_id').notNull(),
   name:       text('name').notNull(),
+  prerequisites: jsonb('prerequisites').$type<string[]>().notNull().default([]),
+  learningOutcomes: jsonb('learning_outcomes').$type<string[]>().notNull().default([]),
   orderIndex: integer('order_index').notNull(),
   active: boolean('active').notNull().default(true),
   isCustom:   boolean('is_custom').notNull().default(false),
   classSubjectId: integer('class_subject_id').references(() => classSubjects.id),
   createdAt:  timestamp('created_at').defaultNow().notNull(),
-}, t => [foreignKey({ name: 'concepts_topic_chapter_fk', columns: [t.topicId, t.chapterId], foreignColumns: [topics.id, topics.chapterId] })]);
+}, t => [foreignKey({ name: 'concepts_topic_chapter_fk', columns: [t.topicId, t.chapterId], foreignColumns: [topics.id, topics.chapterId] }),
+  check('concepts_prerequisites_limit', sql`jsonb_typeof(${t.prerequisites}) = 'array' and jsonb_array_length(${t.prerequisites}) <= 5`),
+  check('concepts_outcomes_limit', sql`jsonb_typeof(${t.learningOutcomes}) = 'array' and jsonb_array_length(${t.learningOutcomes}) <= 5`),
+]);
 
 
 

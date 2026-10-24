@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db';
-import { people, learners, schools, grades, classes, subjects, classSubjects, classChapters, chapters, lessons, lessonConcepts, concepts, homework, questions, lessonFeedback, questionFeedback, announcements } from '../db/schema';
+import { people, learners, schools, grades, classes, subjects, classSubjects, classChapters, chapters, topics, lessons, lessonConcepts, concepts, homework, questions, lessonFeedback, questionFeedback, announcements } from '../db/schema';
 import { getCurriculum } from './curriculumService';
 export class DashboardError extends Error { constructor(message: string, public status = 404) { super(message); } }
 export type DashboardRole = 'staff' | 'learner';
@@ -26,10 +26,10 @@ export async function getDashboard(role: DashboardRole, accountId: number, schoo
       .innerJoin(chapters, eq(chapters.id, classChapters.chapterId)).where(and(inArray(classChapters.classSubjectId, allocations.map(row => row.id)), eq(chapters.active, true))) : [];
     const visible = allocations.filter(row => role === 'learner' || row.personId === accountId || links.some(link => link.classSubjectId === row.id && link.subjectId === row.subjectId && link.gradeNumber === row.gradeNumber && link.personId === accountId));
     const lessonRows = visible.length ? await tx.select().from(lessons).where(inArray(lessons.classSubjectId, visible.map(row => row.id))).orderBy(desc(lessons.date), desc(lessons.id)) : [];
-    const lessonItems = lessonRows.length ? await tx.select({ id: lessonConcepts.id, lessonId: lessonConcepts.lessonId, conceptId: concepts.id, name: concepts.name }).from(lessonConcepts).innerJoin(concepts, eq(concepts.id, lessonConcepts.conceptId)).where(inArray(lessonConcepts.lessonId, lessonRows.map(row => row.id))) : [];
+    const lessonItems = lessonRows.length ? await tx.select({ id: lessonConcepts.id, lessonId: lessonConcepts.lessonId, conceptId: concepts.id, name: concepts.name, prerequisites: concepts.prerequisites, learningOutcomes: concepts.learningOutcomes, teachingBrief: lessonConcepts.teachingBrief }).from(lessonConcepts).innerJoin(concepts, eq(concepts.id, lessonConcepts.conceptId)).innerJoin(topics, eq(topics.id, concepts.topicId)).innerJoin(chapters, eq(chapters.id, concepts.chapterId)).where(inArray(lessonConcepts.lessonId, lessonRows.map(row => row.id))).orderBy(chapters.orderIndex, chapters.id, topics.orderIndex, topics.id, concepts.orderIndex, concepts.id) : [];
     const homeworkRows = lessonRows.length ? await tx.select().from(homework).where(inArray(homework.lessonId, lessonRows.map(row => row.id))) : [];
     const questionRows = homeworkRows.length ? await tx.select({ id: questions.id, homeworkId: questions.homeworkId, body: questions.body, conceptId: questions.conceptId, orderIndex: questions.orderIndex, hasMemo: questions.memo }).from(questions).where(inArray(questions.homeworkId, homeworkRows.map(row => row.id))).orderBy(questions.orderIndex) : [];
-    const responses = role === 'learner' && lessonItems.length ? await tx.select({ lessonConceptId: lessonFeedback.lessonConceptId }).from(lessonFeedback).where(and(eq(lessonFeedback.learnerID, accountId), inArray(lessonFeedback.lessonConceptId, lessonItems.map(row => row.id)))) : [];
+    const responses = role === 'learner' && lessonItems.length ? await tx.select({ lessonConceptId: lessonFeedback.lessonConceptId }).from(lessonFeedback).where(and(eq(lessonFeedback.learnerID, accountId), inArray(lessonFeedback.lessonConceptId, lessonItems.map(row => row.id)), inArray(lessonFeedback.reaction, ['understood', 'didnt_understand']))) : [];
     const questionResponses = role === 'learner' && questionRows.length ? await tx.select().from(questionFeedback).where(and(eq(questionFeedback.learnerId, accountId), inArray(questionFeedback.questionId, questionRows.map(row => row.id)))) : [];
     const subjectList = [];
     for (const row of visible) {
@@ -50,8 +50,8 @@ export async function getDashboard(role: DashboardRole, accountId: number, schoo
         currentChapter: current ? { id: current.id, name: current.name, total: current.total, taught: current.taught } : null,
         totalConcepts: chapterProgress.reduce((sum, chapter) => sum + chapter.total, 0), taughtConcepts: chapterProgress.reduce((sum, chapter) => sum + chapter.taught, 0),
         curriculum: chapterProgress,
-        lessons: history.map(lesson => ({ id: lesson.id, date: lesson.date, status: lesson.status, chapterName: library.chapters.find(chapter => chapter.id === lesson.chapterId)?.name ?? 'Chapter',
-          concepts: lessonItems.filter(item => item.lessonId === lesson.id).map(item => ({ id: item.conceptId, name: item.name })),
+        lessons: history.map(lesson => ({ id: lesson.id, lessonNumber: lesson.lessonNumber, date: lesson.date, status: lesson.status, chapterName: library.chapters.find(chapter => chapter.id === lesson.chapterId)?.name ?? 'Chapter',
+          concepts: lessonItems.filter(item => item.lessonId === lesson.id).map(item => ({ id: item.conceptId, name: lesson.status === 'confirmed' ? item.teachingBrief?.conceptName ?? item.name : item.name, ...(role === 'staff' ? { teachingBrief: lesson.status === 'planned' ? { conceptName: item.name, prerequisites: item.prerequisites, learningOutcomes: item.learningOutcomes } : item.teachingBrief ?? { conceptName: item.name, prerequisites: item.prerequisites, learningOutcomes: item.learningOutcomes } } : {}) })),
           homework: homeworkRows.filter(hw => hw.lessonId === lesson.id && lesson.status === 'confirmed').map(hw => ({ id: hw.id, dueDate: hw.dueDate,
             questions: questionRows.filter(question => question.homeworkId === hw.id).map(question => ({ id: question.id, body: question.body, conceptId: question.conceptId, ...(role === 'staff' ? { memo: question.hasMemo } : {}) })) })) })) });
     }
@@ -63,12 +63,11 @@ export async function getDashboard(role: DashboardRole, accountId: number, schoo
         if (lesson.status === 'planned' && lesson.date < today) needsYou.push({ ...task, id: 'confirm-' + lesson.id, kind: 'Confirm what was taught' });
         if (lesson.status === 'confirmed' && lesson.concepts.length > 0 && lesson.homework.length === 0) needsYou.push({ ...task, id: 'homework-' + lesson.id, kind: 'Create homework' });
       } else {
-        const nextPlan = lessonRows.filter(row => row.classSubjectId === subject.id && row.status === 'planned' && row.createdAt > lessonRows.find(row => row.id === lesson.id)!.createdAt);
+        const nextPlan = lessonRows.filter(row => row.classSubjectId === subject.id && (row.createdAt > lessonRows.find(source => source.id === lesson.id)!.createdAt || (+row.createdAt === +lessonRows.find(source => source.id === lesson.id)!.createdAt && row.lessonNumber > lesson.lessonNumber)));
         if (lesson.status === 'confirmed' && !nextPlan.length && lessonItems.some(item => item.lessonId === lesson.id && !responses.some(response => response.lessonConceptId === item.id))) waitingForYou.push({ ...task, id: 'feedback-' + lesson.id, kind: 'Lesson feedback' });
         for (const hw of lesson.homework) {
           const stored = homeworkRows.find(row => row.id === hw.id)!;
-          const released = stored.memoReleaseType === 'immediately' || (stored.memoReleaseType === 'at_due_date' && stored.dueDate <= now) || (stored.memoReleaseType === 'custom' && !!stored.memoReleaseAt && stored.memoReleaseAt <= now);
-          if (hw.questions.some(question => { const response = questionResponses.find(row => row.questionId === question.id); return !response?.isDone || (released && !!questionRows.find(row => row.id === question.id)?.hasMemo && !response.reaction); })) waitingForYou.push({ ...task, id: 'homework-' + hw.id, kind: 'Homework', date: new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Johannesburg', year: 'numeric', month: '2-digit', day: '2-digit' }).format(stored.dueDate) });
+          if (hw.questions.some(question => { const response = questionResponses.find(row => row.questionId === question.id); return !response?.isDone; })) waitingForYou.push({ ...task, id: 'homework-' + hw.id, kind: 'Homework', date: new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Johannesburg', year: 'numeric', month: '2-digit', day: '2-digit' }).format(stored.dueDate) });
         }
       }
     }

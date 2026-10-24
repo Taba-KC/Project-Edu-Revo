@@ -53,7 +53,7 @@ async function run() {
     assert.equal((await dashboard('learner',learner!.id)).waitingForYou[0]!.kind,'Homework'); checks++;
     await tx.insert(questionFeedback).values({ learnerId: learner!.id, questionId: question!.id, isDone: true });
     assert.equal((await dashboard('learner',learner!.id)).waitingForYou.length,0); checks++;
-    assert.equal((await getDashboard('learner',learner!.id,school!.id,tx,new Date('2026-10-12'))).waitingForYou.length,1); checks++;
+    assert.equal((await getDashboard('learner',learner!.id,school!.id,tx,new Date('2026-10-12'))).waitingForYou.length,0); checks++;
     const serialized = JSON.stringify(await dashboard('learner',learner!.id));
     assert.ok(!serialized.includes('SECRET ANSWER') && !serialized.includes('DO-NOT-EXPOSE') && !serialized.includes('WRONG GRADE') && !serialized.includes('PRIVATE') && !serialized.includes('learnerID')); checks++;
     await assert.rejects(getDashboard('staff',teacher!.id,otherSchool!.id,tx,now),DashboardError); checks++;

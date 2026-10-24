@@ -1,15 +1,17 @@
-import { pgTable, serial, integer, text, date, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, serial, integer, text, date, timestamp, unique } from 'drizzle-orm/pg-core';
 import { chapters } from './chapters';
 import { classSubjects } from './classSubjects';
 
 export const lessons = pgTable('lessons', {
   id:             serial('id').primaryKey(),
+  // The insert trigger assigns a permanent sequence within the class subject.
+  lessonNumber: integer('lesson_number').notNull().default(0),
   chapterId:      integer('chapter_id').notNull().references(() => chapters.id),
   classSubjectId: integer('class_subject_id').notNull().references(() => classSubjects.id),
   date:           date('date').notNull(),
   status:         text('status').notNull().default('planned'),
   createdAt:      timestamp('created_at').defaultNow().notNull(),
-});
+}, table => [unique('lessons_class_subject_number_unique').on(table.classSubjectId, table.lessonNumber)]);
 
 
 

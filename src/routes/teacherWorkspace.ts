@@ -3,14 +3,17 @@ import { z } from 'zod';
 import { requireAuth, requireTeacher } from '../middleware/auth';
 import { TeacherError, getPlanning, savePlan, confirmPlan, getHomeworkContext, sendHomework, updateQuestionMemo } from '../services/teacherWorkspaceService';
 import { generateHomeworkDraft, regenerateMemo } from '../services/homeworkAiService';
+import { getLessonFeedback, addLessonConceptToNextLesson } from '../services/teacherLessonFeedbackService';
 const router = Router();
 router.use('/staff', requireAuth, requireTeacher);
 const id = z.coerce.number().int().positive();
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => { const parsed = new Date(value+'T12:00:00Z'); return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0,10) === value; }, 'Choose a valid date.');
-const plan = z.object({ chapterId: id, date, conceptIds: z.array(id).max(100), customConcepts: z.array(z.object({ name: z.string().trim().min(1).max(500), topicId: id })).max(20).optional() });
+const plan = z.object({ chapterId: id, date, conceptIds: z.array(id).max(120), reviewConceptIds: z.array(id).max(100).optional(), customConcepts: z.array(z.object({ name: z.string().trim().min(1).max(500), topicId: id })).max(20).optional() });
 const homework = z.object({ dueDate: z.iso.datetime({ offset: true }), memoReleaseType: z.enum(['immediately','at_due_date','custom']), memoReleaseAt: z.iso.datetime({ offset: true }).optional(), questions: z.array(z.object({ conceptId: id, body: z.string().trim().min(1).max(12000), memo: z.string().max(24000).optional() })).min(1).max(50) });
 function endpoint(handler: (req: Request, res: Response) => Promise<unknown>) { return async (req: Request, res: Response, next: NextFunction) => { try { await handler(req,res); } catch(error) { if(error instanceof TeacherError) { res.status(error.status).json({error:error.message}); return; } if(error instanceof z.ZodError) { res.status(400).json({error:error.issues.map(issue=>issue.message).join(' ')}); return; } next(error); } }; }
 router.get('/staff/class-subjects/:id/planning', endpoint(async(req,res)=>res.json(await getPlanning(req.caller!,id.parse(req.params.id)))));
+router.get('/staff/class-subjects/:id/lesson-feedback', endpoint(async(req,res)=>res.json(await getLessonFeedback(req.caller!,id.parse(req.params.id)))));
+router.post('/staff/lessons/:id/review-concepts', endpoint(async(req,res)=>res.json(await addLessonConceptToNextLesson(req.caller!,id.parse(req.params.id),z.object({conceptId:id}).parse(req.body).conceptId))));
 router.post('/staff/class-subjects/:id/plans', endpoint(async(req,res)=>res.status(201).json(await savePlan(req.caller!,id.parse(req.params.id),plan.parse(req.body)))));
 router.patch('/staff/lessons/:id/confirm', endpoint(async(req,res)=>res.json(await confirmPlan(req.caller!,id.parse(req.params.id),z.object({conceptIds:z.array(id).max(120)}).parse(req.body).conceptIds))));
 router.get('/staff/lessons/:id/homework-context', endpoint(async(req,res)=>res.json(await getHomeworkContext(req.caller!,id.parse(req.params.id)))));
