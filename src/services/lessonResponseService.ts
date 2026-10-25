@@ -1,5 +1,5 @@
 /**
- * Learner submission rules for confirmed-lesson feedback. Verify the learner belongs to the
+ * Learner submission rules for confirmed-lesson feedback, including goal-level Yes/No answers. Verify the learner belongs to the
  * lesson's class, stop responses when a later lesson exists, and update the learner's
  * existing concept response rather than adding duplicates.
  */
@@ -45,6 +45,7 @@ export async function getLearnerLessonFeedback(caller: AuthPayload, lessonId: nu
  * Serialize with lesson planning, recheck the response window, then insert or update the
  * unique learner/concept response.
  */
+// Compatibility endpoint for older clients. The learner bookshelf uses submitLearningGoalFeedback below.
 export async function submitLessonFeedback(caller: AuthPayload, data: { lessonConceptId: number; reaction: LessonReaction; isAnonymous: boolean }, database: Database = db) {
   if (!['understood', 'didnt_understand'].includes(data.reaction)) throw new TeacherError('Choose I get it or I don’t get it.');
   return database.transaction(async tx => {
@@ -55,5 +56,30 @@ export async function submitLessonFeedback(caller: AuthPayload, data: { lessonCo
     if (!lesson.canRespond) throw new TeacherError('Feedback closed when the next lesson was planned.', 409);
     const [result] = await tx.insert(lessonFeedback).values({ learnerID: caller.accountId, ...data }).onConflictDoUpdate({ target: [lessonFeedback.learnerID, lessonFeedback.lessonConceptId], set: { reaction: data.reaction, isAnonymous: data.isAnonymous, updatedAt: new Date() } }).returning({ lessonConceptId: lessonFeedback.lessonConceptId, reaction: lessonFeedback.reaction });
     return result;
+  });
+}
+
+/** Save one Yes/No atomically without losing the learner's answers to the other goals. */
+export async function submitLearningGoalFeedback(caller: AuthPayload, lessonConceptId: number, data: { goalIndex: number; answer: 'yes' | 'no' }, database: Database = db) {
+  if (!Number.isInteger(data.goalIndex) || data.goalIndex < 0 || data.goalIndex > 4 || !['yes', 'no'].includes(data.answer)) throw new TeacherError('Choose a valid learning goal and Yes or No.');
+  return database.transaction(async tx => {
+    const [link] = await tx.select({ lessonId: lessonConcepts.lessonId, classSubjectId: lessons.classSubjectId }).from(lessonConcepts).innerJoin(lessons, eq(lessons.id, lessonConcepts.lessonId)).where(eq(lessonConcepts.id, lessonConceptId));
+    if (!link) throw new TeacherError('Lesson concept not found.', 404);
+    await tx.execute(sql`select pg_advisory_xact_lock(7413, ${link.classSubjectId})`);
+    const lesson = await learnerLesson(tx, caller, link.lessonId);
+    if (!lesson.canRespond) throw new TeacherError('Feedback closed when the next lesson was planned.', 409);
+    const [item] = await tx.select({ brief: lessonConcepts.teachingBrief, name: concepts.name, prerequisites: concepts.prerequisites, learningOutcomes: concepts.learningOutcomes }).from(lessonConcepts).innerJoin(concepts, eq(concepts.id, lessonConcepts.conceptId)).where(eq(lessonConcepts.id, lessonConceptId));
+    // Older lessons did not freeze guidance. Freeze once on first response so goal indices cannot drift.
+    const brief = item!.brief ?? { conceptName: item!.name, prerequisites: item!.prerequisites, learningOutcomes: item!.learningOutcomes };
+    const goal = brief.learningOutcomes[data.goalIndex];
+    if (!goal) throw new TeacherError('This learning goal is not part of this lesson.');
+    if (!item!.brief) await tx.update(lessonConcepts).set({ teachingBrief: brief }).where(eq(lessonConcepts.id, lessonConceptId));
+    const [existing] = await tx.select().from(lessonFeedback).where(and(eq(lessonFeedback.lessonConceptId, lessonConceptId), eq(lessonFeedback.learnerID, caller.accountId)));
+    const goalResponses = (existing?.goalResponses ?? []).filter(answer => answer.goalIndex !== data.goalIndex && brief.learningOutcomes[answer.goalIndex] === answer.goal);
+    goalResponses.push({ goalIndex: data.goalIndex, goal, answer: data.answer });
+    goalResponses.sort((a, b) => a.goalIndex - b.goalIndex);
+    const reaction = goalResponses.some(answer => answer.answer === 'no') ? 'didnt_understand' : goalResponses.length === brief.learningOutcomes.length ? 'understood' : 'goals_pending';
+    await tx.insert(lessonFeedback).values({ learnerID: caller.accountId, lessonConceptId, reaction, goalResponses, isAnonymous: true }).onConflictDoUpdate({ target: [lessonFeedback.learnerID, lessonFeedback.lessonConceptId], set: { goalResponses, reaction, isAnonymous: true, updatedAt: new Date() } });
+    return { lessonConceptId, goalResponses };
   });
 }

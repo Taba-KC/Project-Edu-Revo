@@ -76,13 +76,13 @@ export async function getPlanning(caller: AuthPayload, classSubjectId: number, d
     });
     const draft = await tx.select().from(lessonReviewConcepts).where(and(eq(lessonReviewConcepts.classSubjectId, classSubjectId), eq(lessonReviewConcepts.personId, caller.accountId)));
     const ordered = await orderedTeachingConcepts(tx, scope.chapters.map(chapter => chapter.id), classSubjectId);
-    const reviewConcepts = ordered.filter(concept => draft.some(item => item.conceptId === concept.id));
+    const reviewConcepts = ordered.filter(concept => draft.some(item => item.conceptId === concept.id)).map(concept => ({ ...concept, reviewGoals: draft.find(item => item.conceptId === concept.id)?.reviewGoals ?? [] }));
     /**
      * Limit ordinary planning choices to the next ten untaught concepts; reviews are added
      * separately, then merged in curriculum order.
      */
     const nextConcepts = ordered.filter(concept => !taught.has(concept.id)).slice(0, 10);
-    const planningConcepts = ordered.filter(concept => nextConcepts.some(next => next.id === concept.id) || reviewConcepts.some(review => review.id === concept.id));
+    const planningConcepts = ordered.filter(concept => nextConcepts.some(next => next.id === concept.id) || reviewConcepts.some(review => review.id === concept.id)).map(concept => ({ ...concept, reviewGoals: draft.find(item => item.conceptId === concept.id)?.reviewGoals ?? [] }));
     return { chapter: current, customConcepts, reviewConcepts, planningConcepts, taughtConceptIds: Array.from(taught), flaggedConcepts: flags, suggestedDate: schoolDate(), aiAvailable: !!process.env.OPENAI_API_KEY };
   });
 }
@@ -123,7 +123,7 @@ export async function savePlan(caller: AuthPayload, classSubjectId: number, data
     const primaryChapterId = ordered.find(concept => selected.has(concept.id))?.chapterId ?? chapter.id;
     const [plan] = await tx.insert(lessons).values({ classSubjectId, chapterId: primaryChapterId, date: data.date, status: 'planned' }).returning();
     const curriculumOrder = await orderedTeachingConcepts(tx, scope.chapters.map(chapter => chapter.id), classSubjectId);
-    await tx.insert(lessonConcepts).values(curriculumOrder.filter(concept => selected.has(concept.id)).map(concept => ({ lessonId: plan!.id, conceptId: concept.id, teachingBrief: { conceptName: concept.name, prerequisites: concept.prerequisites, learningOutcomes: concept.learningOutcomes } })));
+    await tx.insert(lessonConcepts).values(curriculumOrder.filter(concept => selected.has(concept.id)).map(concept => ({ lessonId: plan!.id, conceptId: concept.id, reviewGoals: draft.find(item => item.conceptId === concept.id)?.reviewGoals ?? [], teachingBrief: { conceptName: concept.name, prerequisites: concept.prerequisites, learningOutcomes: concept.learningOutcomes } })));
     // Consume both accepted and declined suggestions shown by this form. Suggestions
     // added in another tab after it loaded stay queued for the following plan.
     const reviewed = review.filter(concept => (data.reviewConceptIds ?? review.map(row => row.id)).includes(concept.id));

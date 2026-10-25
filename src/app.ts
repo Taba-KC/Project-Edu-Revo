@@ -31,6 +31,8 @@ import managerRouter from './routes/manager';
 import dashboardsRouter from './routes/dashboards';
 import teacherWorkspaceRouter from './routes/teacherWorkspace';
 
+import learnerWorkspaceRouter from './routes/learnerWorkspace';
+
 const app = express();
 
 /**
@@ -56,6 +58,7 @@ app.use(authRouter);
 app.use(managerRouter);
 app.use(dashboardsRouter);
 app.use(teacherWorkspaceRouter);
+app.use(learnerWorkspaceRouter);
 app.use(healthRouter);
 app.use(schoolsRouter);
 app.use(gradesRouter);

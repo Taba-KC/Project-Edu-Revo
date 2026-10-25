@@ -14,6 +14,7 @@ export const lessonConcepts = pgTable('lesson_concepts', {
   lessonId:   integer('lesson_id').notNull().references(() => lessons.id),
   conceptId:  integer('concept_id').notNull().references(() => concepts.id),
   teachingBrief: jsonb('teaching_brief').$type<LessonConceptBrief>(),
+  reviewGoals: jsonb('review_goals').$type<string[]>().notNull().default([]),
   createdAt:  timestamp('created_at').defaultNow().notNull(),
 }, (table) => [
   unique().on(table.lessonId, table.conceptId),
