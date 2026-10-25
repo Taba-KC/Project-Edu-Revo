@@ -1,3 +1,8 @@
+/**
+ * Configuration for Drizzle migration commands: where table definitions live, where SQL
+ * migrations are stored and which PostgreSQL connection to use. Editing a schema file alone
+ * does not alter the live database.
+ */
 import { defineConfig } from 'drizzle-kit';
 
 export default defineConfig({

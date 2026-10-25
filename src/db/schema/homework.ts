@@ -1,3 +1,7 @@
+/**
+ * One homework set associated with a lesson, including due time and memo-release policy.
+ * Individual question text is stored separately in questions.
+ */
 import { pgTable, serial, integer, text, timestamp } from 'drizzle-orm/pg-core';
 import { lessons } from './lessons';
 

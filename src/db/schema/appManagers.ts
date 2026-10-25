@@ -1,3 +1,7 @@
+/**
+ * Accounts allowed to manage the shared curriculum. These are a separate account type from
+ * school staff and learners.
+ */
 import { pgTable, serial, text, boolean, timestamp } from 'drizzle-orm/pg-core';
 export const appManagers = pgTable('app_managers', {
   id: serial('id').primaryKey(),

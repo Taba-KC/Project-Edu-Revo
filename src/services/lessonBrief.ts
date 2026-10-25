@@ -1,3 +1,7 @@
+/**
+ * Backend shape of a saved lesson concept brief. A brief is educational guidance attached to
+ * a lesson concept, separate from the learner's feedback or the global concept identity.
+ */
 import { z } from 'zod';
 
 const item = z.string().trim().min(1).max(1000);

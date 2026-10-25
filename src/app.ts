@@ -1,3 +1,8 @@
+/**
+ * Build the Express application: shared middleware runs first, then mounted routers match
+ * HTTP methods and paths. Router files define full endpoint paths in this project; there is
+ * no automatic /api prefix. server.ts starts listening separately.
+ */
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -28,10 +33,25 @@ import teacherWorkspaceRouter from './routes/teacherWorkspace';
 
 const app = express();
 
+/**
+ * Allow requests from the development frontend origin. CORS controls browser access; it is
+ * not account authorization.
+ */
 app.use(cors({ origin: 'http://localhost:3001', credentials: true }));
+/**
+ * Parse JSON request bodies before route handlers read req.body, with a size limit.
+ */
 app.use(express.json({ limit: '1mb' }));
+/**
+ * Serve this uploads directory publicly at /uploads. Private files would need a separate
+ * authorization-aware download route.
+ */
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 app.use(requestLogger);
+/**
+ * Mount routers after shared middleware. Creating a routes file alone does not make its
+ * endpoints reachable.
+ */
 app.use(authRouter);
 app.use(managerRouter);
 app.use(dashboardsRouter);

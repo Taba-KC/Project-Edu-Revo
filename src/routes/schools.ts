@@ -1,3 +1,8 @@
+/**
+ * HTTP routing for this feature. School registration, lookup and activation endpoints.
+ * req.params contains URL IDs, req.body contains submitted JSON, and res.json sends the
+ * response. Read each handler's guards before assuming access is allowed.
+ */
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import {
@@ -21,6 +26,9 @@ const activateSchoolSchema = z.object({
   activationCode: z.string().min(1),
 });
 
+/**
+ * POST /schools/seed: Create data or run the submitted operation.
+ */
 router.post('/schools/seed', async (req: Request, res: Response) => {
   const result = seedSchoolSchema.safeParse(req.body);
   if (!result.success) {
@@ -32,6 +40,9 @@ router.post('/schools/seed', async (req: Request, res: Response) => {
   res.status(201).json(school);
 });
 
+/**
+ * POST /schools/activate: Create data or run the submitted operation.
+ */
 router.post('/schools/activate', async (req: Request, res: Response) => {
   const result = activateSchoolSchema.safeParse(req.body);
   if (!result.success) {
@@ -48,11 +59,17 @@ router.post('/schools/activate', async (req: Request, res: Response) => {
   res.json(school);
 });
 
+/**
+ * GET /schools: Read/return data.
+ */
 router.get('/schools', async (_req: Request, res: Response) => {
   const schools = await getAllSchools();
   res.json(schools);
 });
 
+/**
+ * GET /schools/:id: Read/return data.
+ */
 router.get('/schools/:id', async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
   if (isNaN(id)) {

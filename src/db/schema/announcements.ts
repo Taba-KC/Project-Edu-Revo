@@ -1,3 +1,7 @@
+/**
+ * School announcements, optionally targeted to a class. These are saved notices, not browser
+ * notifications or automatic email delivery.
+ */
 import { pgTable, serial, integer, text, timestamp } from 'drizzle-orm/pg-core';
 import { schools } from './schools';
 import { people } from './people';

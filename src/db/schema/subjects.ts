@@ -1,3 +1,7 @@
+/**
+ * Shared subject names, such as Mathematics. A subject is reused across schools/grades;
+ * classSubjects holds actual class allocations.
+ */
 import { pgTable, serial, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 import { sql } from 'drizzle-orm';

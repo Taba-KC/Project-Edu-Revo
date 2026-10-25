@@ -1,3 +1,8 @@
+/**
+ * Aggregate binary concept feedback for recent confirmed lessons and queue concepts for
+ * review. An added concept goes to an upcoming owned plan when possible, otherwise to a
+ * next-lesson draft. Original taught history is retained.
+ */
 import { and, eq, inArray, desc, asc, gte, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { lessons, lessonFeedback, learners, concepts, chapters, topics, lessonConcepts, lessonReviewConcepts } from '../db/schema';
@@ -7,6 +12,10 @@ import { orderedTeachingConcepts } from './teacherConceptOrder';
 import { conceptUnderstanding, understandingScore } from './lessonUnderstanding';
 type Database = Pick<typeof db, 'transaction'>;
 
+/**
+ * Read recent owned confirmed lessons, count current-roster binary responses and sort their
+ * concepts by understanding. No learner-name list is returned.
+ */
 export async function getLessonFeedback(caller: AuthPayload, classSubjectId: number, database: Database = db) {
   return database.transaction(async tx => {
     const scope = await teacherScope(tx, caller, classSubjectId);
@@ -20,6 +29,10 @@ export async function getLessonFeedback(caller: AuthPayload, classSubjectId: num
     const items = await tx.select({ id: lessonConcepts.id, lessonId: lessonConcepts.lessonId, conceptId: concepts.id, name: concepts.name, teachingBrief: lessonConcepts.teachingBrief }).from(lessonConcepts)
       .innerJoin(concepts, eq(concepts.id, lessonConcepts.conceptId)).innerJoin(topics, eq(topics.id, concepts.topicId)).innerJoin(chapters, eq(chapters.id, concepts.chapterId))
       .where(inArray(lessonConcepts.lessonId, sets.map(set => set.id))).orderBy(chapters.orderIndex, chapters.id, topics.orderIndex, topics.id, concepts.orderIndex, concepts.id);
+    /**
+     * Count only learners on the current class roster and only responses to the retrieved lesson
+     * associations.
+     */
     const reactions = items.length && roster.length ? await tx.select({ learnerId: lessonFeedback.learnerID, lessonConceptId: lessonFeedback.lessonConceptId, reaction: lessonFeedback.reaction })
       .from(lessonFeedback).where(and(inArray(lessonFeedback.lessonConceptId, items.map(item => item.id)), inArray(lessonFeedback.learnerID, roster.map(learner => learner.id)))) : [];
     const available = await orderedTeachingConcepts(tx, chapterIds, classSubjectId);
@@ -27,6 +40,10 @@ export async function getLessonFeedback(caller: AuthPayload, classSubjectId: num
   }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
 }
 
+/**
+ * Validate that the concept belongs to the source lesson, then add it to an upcoming owned
+ * plan or queue it once for later planning.
+ */
 export async function addLessonConceptToNextLesson(caller: AuthPayload, lessonId: number, conceptId: number, database: Database = db, now = new Date()) {
   return database.transaction(async tx => {
     const source = await lessonScope(tx, caller, lessonId);
@@ -39,6 +56,10 @@ export async function addLessonConceptToNextLesson(caller: AuthPayload, lessonId
     if (!item || !ordered.some(concept => concept.id === conceptId)) throw new TeacherError('Choose an active concept from this lesson and your teaching allocation.');
     const [next] = scope.chapters.length ? await tx.select().from(lessons).where(and(eq(lessons.classSubjectId, classSubjectId), eq(lessons.status, 'planned'), gte(lessons.date, schoolDate(now)), inArray(lessons.chapterId, scope.chapters.map(chapter => chapter.id))))
       .orderBy(asc(lessons.date), asc(lessons.id)).limit(1).for('update') : [];
+    /**
+     * An upcoming plan exists: add the concept once to that plan and clear any duplicate queued
+     * suggestion.
+     */
     if (next) {
       const planned = await tx.select({ conceptId: lessonConcepts.conceptId }).from(lessonConcepts).where(eq(lessonConcepts.lessonId, next.id));
       if (planned.length >= 120 && !planned.some(item => item.conceptId === conceptId)) throw new TeacherError('The next lesson already has 120 concepts.');
@@ -46,6 +67,10 @@ export async function addLessonConceptToNextLesson(caller: AuthPayload, lessonId
       await tx.delete(lessonReviewConcepts).where(and(eq(lessonReviewConcepts.classSubjectId, classSubjectId), eq(lessonReviewConcepts.personId, caller.accountId), eq(lessonReviewConcepts.conceptId, conceptId)));
       return { destination: 'lesson' as const, lessonId: next.id, date: next.date };
     }
+    /**
+     * No suitable plan exists: retain a unique suggestion for the next planning form to show
+     * checked.
+     */
     const draft = await tx.select({ conceptId: lessonReviewConcepts.conceptId }).from(lessonReviewConcepts).where(and(eq(lessonReviewConcepts.classSubjectId, classSubjectId), eq(lessonReviewConcepts.personId, caller.accountId)));
     if (draft.length >= 100 && !draft.some(item => item.conceptId === conceptId)) throw new TeacherError('The next lesson draft already has 100 lesson review concepts.');
     await tx.insert(lessonReviewConcepts).values({ classSubjectId, personId: caller.accountId, conceptId }).onConflictDoNothing();

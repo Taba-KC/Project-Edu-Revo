@@ -1,3 +1,8 @@
+/**
+ * HTTP routing for this feature. Read active subjects for a class and assign their teachers.
+ * req.params contains URL IDs, req.body contains submitted JSON, and res.json sends the
+ * response. Read each handler's guards before assuming access is allowed.
+ */
 import { Router } from 'express';
 import { z } from 'zod';
 import { db } from '../db';
@@ -16,9 +21,16 @@ router.use('/schools/:schoolId/classes/:classId/subjects', requireAuth, requireP
   if (!cls) return res.status(404).json({ error: 'Class not found' });
   next();
 });
+/**
+ * GET /schools/:schoolId/classes/:classId/subjects: Read/return data.
+ */
 router.get('/schools/:schoolId/classes/:classId/subjects', async (req, res) => {
   res.json(await getClassSubjects(Number(req.params.schoolId), Number(req.params.classId)));
 });
+/**
+ * GET /schools/:schoolId/classes/:classId/subjects/:classSubjectId/curriculum: Read/return
+ * data.
+ */
 router.get('/schools/:schoolId/classes/:classId/subjects/:classSubjectId/curriculum', async (req, res) => {
   const classSubjectId = Number(req.params.classSubjectId);
   if (!Number.isSafeInteger(classSubjectId) || classSubjectId <= 0) return res.status(400).json({ error: 'Invalid class subject ID' });
@@ -29,6 +41,10 @@ router.get('/schools/:schoolId/classes/:classId/subjects/:classSubjectId/curricu
     throw error;
   }
 });
+/**
+ * PATCH /schools/:schoolId/classes/:classId/subjects/:classSubjectId/teacher: Apply an edit
+ * to an existing record.
+ */
 router.patch('/schools/:schoolId/classes/:classId/subjects/:classSubjectId/teacher', async (req, res) => {
   const result = z.object({ personId: z.number().int().positive().nullable() }).safeParse(req.body);
   const classSubjectId = Number(req.params.classSubjectId);

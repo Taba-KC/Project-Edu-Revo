@@ -1,3 +1,9 @@
+/**
+ * HTTP routing for this feature. Principal class management, including parent school/grade
+ * validation and request input checks. req.params contains URL IDs, req.body contains
+ * submitted JSON, and res.json sends the response. Read each handler's guards before
+ * assuming access is allowed.
+ */
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import {
@@ -51,6 +57,10 @@ const assignStreamSchema = z.object({
   streamId: z.number().int().positive(),
 });
 
+/**
+ * POST /schools/:schoolId/grades/:gradeId/classes: Create data or run the submitted
+ * operation.
+ */
 router.post('/schools/:schoolId/grades/:gradeId/classes', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
   const schoolId = parseInt(req.params.schoolId as string);
   const gradeId = parseInt(req.params.gradeId as string);
@@ -88,6 +98,9 @@ router.post('/schools/:schoolId/grades/:gradeId/classes', requireAuth, requirePr
   }
 });
 
+/**
+ * GET /schools/:schoolId/grades/:gradeId/classes: Read/return data.
+ */
 router.get('/schools/:schoolId/grades/:gradeId/classes', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
   const schoolId = parseInt(req.params.schoolId as string);
   const gradeId = parseInt(req.params.gradeId as string);
@@ -107,6 +120,10 @@ router.get('/schools/:schoolId/grades/:gradeId/classes', requireAuth, requirePri
   res.json(classList);
 });
 
+/**
+ * POST /schools/:schoolId/grades/:gradeId/classes/:classId/stream: Create data or run the
+ * submitted operation.
+ */
 router.post('/schools/:schoolId/grades/:gradeId/classes/:classId/stream', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
   const schoolId = parseInt(req.params.schoolId as string);
   const gradeId = parseInt(req.params.gradeId as string);
@@ -133,6 +150,10 @@ router.post('/schools/:schoolId/grades/:gradeId/classes/:classId/stream', requir
   res.json(cls);
 });
 
+/**
+ * PATCH /schools/:schoolId/grades/:gradeId/classes/:classId: Apply an edit to an existing
+ * record.
+ */
 router.patch('/schools/:schoolId/grades/:gradeId/classes/:classId', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
   const schoolId = parseInt(req.params.schoolId as string);
   const gradeId = parseInt(req.params.gradeId as string);
@@ -171,6 +192,10 @@ router.patch('/schools/:schoolId/grades/:gradeId/classes/:classId', requireAuth,
   }
 });
 
+/**
+ * DELETE /schools/:schoolId/grades/:gradeId/classes/:classId: Remove data through the
+ * handler below.
+ */
 router.delete('/schools/:schoolId/grades/:gradeId/classes/:classId', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
   const schoolId = parseInt(req.params.schoolId as string);
   const gradeId = parseInt(req.params.gradeId as string);

@@ -1,3 +1,9 @@
+/**
+ * Shared subject/grade curriculum import, retrieval and editing. Preserve IDs while
+ * labels/order change, validate guidance, archive removed records and use revisions to
+ * reject stale saves. Class-specific teacher-created concepts are excluded from the shared
+ * library.
+ */
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import * as XLSX from 'xlsx';
@@ -7,6 +13,10 @@ export class CurriculumError extends Error { constructor(message: string, public
 const label = z.string().trim().min(1).max(1000);
 const identity = { id: z.number().int().positive().optional(), name: label };
 export const conceptGuidanceSchema = z.object({ prerequisites: z.array(label).max(5).optional(), learningOutcomes: z.array(label).max(5).optional() });
+/**
+ * Zod validates untrusted request data at runtime, including the maximum five guidance items
+ * per concept. TypeScript alone cannot validate HTTP JSON.
+ */
 export const curriculumSchema = z.object({
   subjectId: z.number().int().positive(), gradeNumber: z.number().int().min(8).max(12), revision: z.number().int().min(0),
   chapters: z.array(z.object({ ...identity, topics: z.array(z.object({ ...identity,
@@ -16,6 +26,10 @@ export const curriculumSchema = z.object({
 export type CurriculumInput = z.infer<typeof curriculumSchema>;
 const key = (name: string) => name.trim().replace(/\s+/g, ' ').toLowerCase();
 type PreviewChapter = { name: string; topics: { name: string; concepts: { name: string; prerequisites?: string[]; learningOutcomes?: string[] }[] }[] };
+/**
+ * Compare heading spelling with edit distance to suggest possible duplicates. A warning is
+ * not an automatic merge.
+ */
 function similar(a: string, b: string) {
   if (Math.abs(a.length - b.length) > 2 || Math.min(a.length, b.length) < 8) return false;
   let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
@@ -26,6 +40,10 @@ function similar(a: string, b: string) {
   }
   return previous[b.length]! <= 2;
 }
+/**
+ * Parse supported spreadsheet layouts into a chapter/topic/concept tree and warnings.
+ * Preview performs no database writes.
+ */
 export function previewWorkbook(buffer: Buffer) {
   let book: XLSX.WorkBook;
   try { book = XLSX.read(buffer, { type: 'buffer', sheetRows: 2003 }); }
@@ -45,6 +63,10 @@ export function previewWorkbook(buffer: Buffer) {
       }
       return String(cell?.v ?? '').trim();
     };
+    /**
+     * Recognize the current flat template with 13 columns. Other supported spreadsheet layouts
+     * are handled below.
+     */
     if (key(read(0, 0)) === 'chapter' && key(read(0, 1)) === 'topic' && key(read(0, 2)) === 'concept') {
       const headers = ['Chapter', 'Topic', 'Concept', ...Array.from({ length: 5 }, (_, i) => 'Prerequisite ' + (i + 1)), ...Array.from({ length: 5 }, (_, i) => 'Learning outcome ' + (i + 1))];
       for (let c = 0; c <= Math.max(range.e.c, 12); c++) {
@@ -87,6 +109,10 @@ export function previewWorkbook(buffer: Buffer) {
     return { name, chapters: result, warnings };
   });
 }
+/**
+ * Read the active shared tree and its revision in a consistent read-only transaction; omit
+ * teacher-only custom concepts.
+ */
 export async function getCurriculum(subjectId: number, gradeNumber: number, database: Pick<typeof db, 'transaction'> = db) {
   return database.transaction(async tx => {
     const [library] = await tx.select().from(curriculumLibraries).where(and(eq(curriculumLibraries.subjectId, subjectId), eq(curriculumLibraries.gradeNumber, gradeNumber)));
@@ -97,6 +123,10 @@ export async function getCurriculum(subjectId: number, gradeNumber: number, data
       chapters: rows.map(ch => ({ id: ch.id, name: ch.name, topics: topicRows.filter(t => t.chapterId === ch.id).map(t => ({ id: t.id, name: t.name, concepts: items.filter(c => c.topicId === t.id).map(c => ({ id: c.id, name: c.name, prerequisites: c.prerequisites, learningOutcomes: c.learningOutcomes })) })) })) };
   }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
 }
+/**
+ * Validate labels/IDs and revision, preserve existing identities, archive removals, save
+ * ordered content and advance the library revision atomically.
+ */
 export async function saveCurriculum(input: CurriculumInput, database: Pick<typeof db, 'transaction'> = db) {
   const parsed = curriculumSchema.safeParse(input);
   if (!parsed.success) throw new CurriculumError('Check curriculum labels and use at most five prerequisites and five learning outcomes per concept.');
@@ -107,6 +137,10 @@ export async function saveCurriculum(input: CurriculumInput, database: Pick<type
     if (!subject) throw new CurriculumError('Subject not found', 404);
     const old = await tx.select().from(chapters).where(and(eq(chapters.subjectId, input.subjectId), eq(chapters.gradeNumber, input.gradeNumber)));
     const [library] = await tx.select().from(curriculumLibraries).where(and(eq(curriculumLibraries.subjectId, input.subjectId), eq(curriculumLibraries.gradeNumber, input.gradeNumber)));
+    /**
+     * Optimistic concurrency check: the client must edit the version it actually loaded.
+     * Otherwise return a conflict instead of overwriting a newer save.
+     */
     if ((library?.revision ?? 0) !== input.revision) throw new CurriculumError('This curriculum was changed elsewhere. Reload it before saving.', 409);
     const oldTopics = old.length ? await tx.select().from(topics).where(inArray(topics.chapterId, old.map(c => c.id))) : [];
     const oldConcepts = old.length ? await tx.select().from(concepts).where(inArray(concepts.chapterId, old.map(c => c.id))) : [];
@@ -131,6 +165,10 @@ export async function saveCurriculum(input: CurriculumInput, database: Pick<type
         }
       }
     }
+    /**
+     * Retire removed content instead of deleting it, preserving references from historical
+     * lessons.
+     */
     for (const row of old) if (row.active && !chapterIds.has(row.id)) await tx.update(chapters).set({ active: false }).where(eq(chapters.id, row.id));
     for (const row of oldTopics) if (row.active && !topicIds.has(row.id)) await tx.update(topics).set({ active: false }).where(eq(topics.id, row.id));
     for (const row of oldConcepts) if (row.active && !row.isCustom && !conceptIds.has(row.id)) await tx.update(concepts).set({ active: false }).where(eq(concepts.id, row.id));
@@ -153,6 +191,10 @@ export async function saveCurriculum(input: CurriculumInput, database: Pick<type
         const savedConcepts = [];
         for (const [k, concept] of topic.concepts.entries()) {
           const previous = oldConcepts.find(row => row.id === concept.id);
+          /**
+           * Omitted guidance preserves existing text, while an explicitly empty array clears it. Those
+           * are intentionally different edits.
+           */
           const guidance = { prerequisites: concept.prerequisites ?? previous?.prerequisites ?? [], learningOutcomes: concept.learningOutcomes ?? previous?.learningOutcomes ?? [] };
           if (concept.id) { await tx.update(concepts).set({ name: concept.name, orderIndex: k + 1, ...guidance }).where(eq(concepts.id, concept.id)); savedConcepts.push({ id: concept.id, name: concept.name, ...guidance }); }
           else { const [row] = await tx.insert(concepts).values({ chapterId, topicId, name: concept.name, orderIndex: k + 1, ...guidance }).returning(); savedConcepts.push({ id: row.id, name: row.name, ...guidance }); }

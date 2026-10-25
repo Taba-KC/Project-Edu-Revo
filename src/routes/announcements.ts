@@ -1,3 +1,8 @@
+/**
+ * HTTP routing for this feature. Announcement CRUD endpoints and recipient/school checks.
+ * req.params contains URL IDs, req.body contains submitted JSON, and res.json sends the
+ * response. Read each handler's guards before assuming access is allowed.
+ */
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { requireAuth, requirePrincipal, requireLearner } from '../middleware/auth';
@@ -35,6 +40,9 @@ const updateSchema = z.object({
 );
 
 // Principal creates an announcement
+/**
+ * POST /schools/:schoolId/announcements: Create data or run the submitted operation.
+ */
 router.post('/schools/:schoolId/announcements', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
   const result = createSchema.safeParse(req.body);
   if (!result.success) { res.status(400).json({ error: result.error.flatten() }); return; }
@@ -48,6 +56,9 @@ router.post('/schools/:schoolId/announcements', requireAuth, requirePrincipal, a
 });
 
 // Principal views all announcements for the school
+/**
+ * GET /schools/:schoolId/announcements: Read/return data.
+ */
 router.get('/schools/:schoolId/announcements', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
   const schoolId = req.caller!.schoolId!;
   if (isNaN(schoolId)) { res.status(400).json({ error: 'Invalid school ID' }); return; }
@@ -56,6 +67,10 @@ router.get('/schools/:schoolId/announcements', requireAuth, requirePrincipal, as
   res.json(list);
 });
 
+/**
+ * PATCH /schools/:schoolId/announcements/:announcementId: Apply an edit to an existing
+ * record.
+ */
 router.patch('/schools/:schoolId/announcements/:announcementId', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
   const schoolId = req.caller!.schoolId!;
   const announcementId = parseInt(req.params.announcementId as string);
@@ -70,6 +85,10 @@ router.patch('/schools/:schoolId/announcements/:announcementId', requireAuth, re
   res.json(announcement);
 });
 
+/**
+ * DELETE /schools/:schoolId/announcements/:announcementId: Remove data through the handler
+ * below.
+ */
 router.delete('/schools/:schoolId/announcements/:announcementId', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
   const schoolId = req.caller!.schoolId!;
   const announcementId = parseInt(req.params.announcementId as string);
@@ -82,6 +101,9 @@ router.delete('/schools/:schoolId/announcements/:announcementId', requireAuth, r
 });
 
 // Learner views their relevant announcements
+/**
+ * GET /learners/me/announcements: Read/return data.
+ */
 router.get('/learners/me/announcements', requireAuth, requireLearner, async (req: Request, res: Response) => {
   const { accountId, schoolId } = req.caller!;
 

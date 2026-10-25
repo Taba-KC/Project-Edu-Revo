@@ -1,8 +1,17 @@
+/**
+ * One shared curriculum-order query for planning and reviews. Sorting chapter -> topic ->
+ * concept keeps repeated concepts in their curriculum position instead of the order in which
+ * buttons were clicked.
+ */
 import { and, eq, inArray, or } from 'drizzle-orm';
 import { db } from '../db';
 import { chapters, topics, concepts } from '../db/schema';
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
+/**
+ * Read active shared concepts and this allocation's own custom concepts in
+ * chapter/topic/concept order.
+ */
 /** One canonical chapter → topic → concept ordering, including class custom concepts. */
 export async function orderedTeachingConcepts(tx: Tx, chapterIds: number[], classSubjectId: number) {
   if (!chapterIds.length) return [];

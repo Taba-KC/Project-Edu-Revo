@@ -1,3 +1,8 @@
+/**
+ * Authentication and coarse role checks for incoming HTTP requests. requireAuth verifies the
+ * signed token and attaches req.caller; role middleware narrows permitted account types.
+ * Services/routes still need record-level school/class ownership checks.
+ */
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
@@ -18,6 +23,10 @@ declare global {
   }
 }
 
+/**
+ * Verify the bearer token signature and expiry before trusting its claims. Successful
+ * verification attaches caller details for later handlers.
+ */
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) {
@@ -33,6 +42,10 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   }
 }
 
+/**
+ * Allow staff account types through; finer role and record ownership checks still belong in
+ * the following middleware/service.
+ */
 export function requirePerson(req: Request, res: Response, next: NextFunction) {
   if (req.caller?.accountType !== 'person') {
     return res.status(403).json({ error: 'Staff access required' });
@@ -40,6 +53,10 @@ export function requirePerson(req: Request, res: Response, next: NextFunction) {
   return next();
 }
 
+/**
+ * Require a learner token. The service must still check which class/lesson this learner may
+ * access.
+ */
 export function requireLearner(req: Request, res: Response, next: NextFunction) {
   if (req.caller?.accountType !== 'learner') {
     return res.status(403).json({ error: 'Learner access required' });
@@ -47,6 +64,9 @@ export function requireLearner(req: Request, res: Response, next: NextFunction) 
   return next();
 }
 
+/**
+ * Limit this endpoint to a person account with the developer role.
+ */
 export function requireDeveloper(req: Request, res: Response, next: NextFunction) {
   if (req.caller?.accountType !== 'person' || req.caller?.role !== 'developer') {
     return res.status(403).json({ error: 'Developer access required' });
@@ -54,6 +74,10 @@ export function requireDeveloper(req: Request, res: Response, next: NextFunction
   return next();
 }
 
+/**
+ * Require a principal role before a principal-only handler runs. School ownership is a
+ * separate check.
+ */
 export function requirePrincipal(req: Request, res: Response, next: NextFunction) {
   if (req.caller?.accountType !== 'person' || req.caller?.role !== 'principal') {
     return res.status(403).json({ error: 'Principal access required' });
@@ -61,6 +85,10 @@ export function requirePrincipal(req: Request, res: Response, next: NextFunction
   return next();
 }
 
+/**
+ * Allow teaching staff roles, including principals where supported. The teacher service then
+ * checks the actual allocation owner.
+ */
 export function requireTeacher(req: Request, res: Response, next: NextFunction) {
   if (req.caller?.accountType !== 'person') {
     return res.status(403).json({ error: 'Staff access required' });

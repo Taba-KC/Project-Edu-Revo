@@ -1,3 +1,8 @@
+/**
+ * Questions belonging to homework, each linked to the concept it tests. orderIndex
+ * determines question order; memo stores the worked answer controlled by the homework
+ * release policy.
+ */
 import { pgTable, serial, integer, text, timestamp } from 'drizzle-orm/pg-core';
 import { homework } from './homework';
 import { concepts } from './concepts';

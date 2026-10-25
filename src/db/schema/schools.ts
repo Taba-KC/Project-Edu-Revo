@@ -1,3 +1,7 @@
+/**
+ * School identity, location link and activation details. Grades and school accounts refer to
+ * this stable school ID.
+ */
 import { pgTable, serial, text, integer, timestamp } from 'drizzle-orm/pg-core';
 import { circuits } from './circuits';
 

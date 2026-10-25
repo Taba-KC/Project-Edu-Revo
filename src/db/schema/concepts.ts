@@ -1,3 +1,8 @@
+/**
+ * Concepts ordered under chapters/topics, including shared prerequisites and learning
+ * outcomes. isCustom/classSubjectId distinguish a teacher's class-only additions from the
+ * shared curriculum.
+ */
 import { pgTable, serial, integer, text, boolean, timestamp, foreignKey, jsonb, check } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { chapters } from './chapters';

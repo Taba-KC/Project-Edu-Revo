@@ -1,3 +1,7 @@
+/**
+ * Hashed refresh tokens with expiry and account identity. A hash is stored rather than the
+ * usable bearer token; login/refresh operations are in authService.
+ */
 import { pgTable, serial, text, integer, timestamp, boolean } from 'drizzle-orm/pg-core';
 
 export const refreshTokens = pgTable('refresh_tokens', {

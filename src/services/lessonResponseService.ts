@@ -1,3 +1,8 @@
+/**
+ * Learner submission rules for confirmed-lesson feedback. Verify the learner belongs to the
+ * lesson's class, stop responses when a later lesson exists, and update the learner's
+ * existing concept response rather than adding duplicates.
+ */
 import { and, eq, gt, gte, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { learners, classes, grades, classSubjects, lessons, lessonConcepts, lessonFeedback, concepts, topics, chapters } from '../db/schema';
@@ -8,6 +13,10 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Database = Pick<typeof db, 'transaction'>;
 export type LessonReaction = 'understood' | 'didnt_understand';
 
+/**
+ * Check that the caller is an active learner in this lesson's class and that it is
+ * confirmed. A newer lesson closes the response window.
+ */
 async function learnerLesson(tx: Tx, caller: AuthPayload, lessonId: number) {
   const [lesson] = await tx.select({ id: lessons.id, status: lessons.status, createdAt: lessons.createdAt, lessonNumber: lessons.lessonNumber, classSubjectId: lessons.classSubjectId }).from(lessons)
     .innerJoin(classSubjects, eq(classSubjects.id, lessons.classSubjectId)).innerJoin(classes, eq(classes.id, classSubjects.classId)).innerJoin(grades, eq(grades.id, classes.gradeId))
@@ -18,6 +27,9 @@ async function learnerLesson(tx: Tx, caller: AuthPayload, lessonId: number) {
   return { ...lesson, canRespond: !next };
 }
 
+/**
+ * Return this learner's own responses and permitted confirmed concepts in curriculum order.
+ */
 export async function getLearnerLessonFeedback(caller: AuthPayload, lessonId: number, database: Database = db) {
   return database.transaction(async tx => {
     const lesson = await learnerLesson(tx, caller, lessonId);
@@ -29,6 +41,10 @@ export async function getLearnerLessonFeedback(caller: AuthPayload, lessonId: nu
   }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
 }
 
+/**
+ * Serialize with lesson planning, recheck the response window, then insert or update the
+ * unique learner/concept response.
+ */
 export async function submitLessonFeedback(caller: AuthPayload, data: { lessonConceptId: number; reaction: LessonReaction; isAnonymous: boolean }, database: Database = db) {
   if (!['understood', 'didnt_understand'].includes(data.reaction)) throw new TeacherError('Choose I get it or I don’t get it.');
   return database.transaction(async tx => {

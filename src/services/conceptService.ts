@@ -1,6 +1,15 @@
+/**
+ * Lower-level concept creation and chapter listing. New shared curriculum editing is
+ * coordinated by curriculumService, while teacher planning uses scoped
+ * teacherWorkspaceService operations.
+ */
 import { db } from '../db';
 import { concepts, topics, chapters } from '../db/schema';
 import { eq, and, sql } from 'drizzle-orm';
+/**
+ * Insert a chapter concept through this low-level helper; shared import/edit validation has
+ * a separate service.
+ */
 export async function createConcept(data: { chapterId: number; topicId?: number; name: string; orderIndex: number }) {
   return db.transaction(async tx => {
     await tx.execute(sql`select pg_advisory_xact_lock(7411, 0)`);
@@ -13,6 +22,9 @@ export async function createConcept(data: { chapterId: number; topicId?: number;
     return concept;
   });
 }
+/**
+ * Read the chapter's active concepts in their stored order.
+ */
 export async function getConceptsByChapter(chapterId: number, database: Pick<typeof db, 'select'> = db) {
   const rows = await database.select({ concept: concepts }).from(concepts).innerJoin(topics, eq(topics.id, concepts.topicId)).innerJoin(chapters, eq(chapters.id, concepts.chapterId))
     .where(and(eq(concepts.chapterId, chapterId), eq(concepts.active, true), eq(topics.active, true), eq(chapters.active, true)))

@@ -1,3 +1,9 @@
+/**
+ * HTTP routing for this feature. Login, token refresh/logout and account-claim endpoints for
+ * the supported account types. req.params contains URL IDs, req.body contains submitted
+ * JSON, and res.json sends the response. Read each handler's guards before assuming access
+ * is allowed.
+ */
 import { Router } from 'express';
 import { z } from 'zod';
 import { loginPerson, loginLearner, loginManager, refreshAccessToken, logout } from '../services/authService';
@@ -13,6 +19,9 @@ const refreshSchema = z.object({
   refreshToken: z.string(),
 });
 
+/**
+ * POST /auth/people/login: Create data or run the submitted operation.
+ */
 router.post('/auth/people/login', async (req, res) => {
   const result = loginSchema.safeParse(req.body);
   if (!result.success) return res.status(400).json({ error: result.error.flatten() });
@@ -25,6 +34,9 @@ router.post('/auth/people/login', async (req, res) => {
   }
 });
 
+/**
+ * POST /auth/learners/login: Create data or run the submitted operation.
+ */
 router.post('/auth/learners/login', async (req, res) => {
   const result = loginSchema.safeParse(req.body);
   if (!result.success) return res.status(400).json({ error: result.error.flatten() });
@@ -37,6 +49,9 @@ router.post('/auth/learners/login', async (req, res) => {
   }
 });
 
+/**
+ * POST /auth/refresh: Create data or run the submitted operation.
+ */
 router.post('/auth/refresh', async (req, res) => {
   const result = refreshSchema.safeParse(req.body);
   if (!result.success) return res.status(400).json({ error: result.error.flatten() });
@@ -49,6 +64,9 @@ router.post('/auth/refresh', async (req, res) => {
   }
 });
 
+/**
+ * POST /auth/logout: Create data or run the submitted operation.
+ */
 router.post('/auth/logout', async (req, res) => {
   const result = refreshSchema.safeParse(req.body);
   if (!result.success) return res.status(400).json({ error: result.error.flatten() });
@@ -57,6 +75,9 @@ router.post('/auth/logout', async (req, res) => {
   return res.json({ message: 'Logged out' });
 });
 
+/**
+ * POST /auth/managers/login: Create data or run the submitted operation.
+ */
 router.post('/auth/managers/login', async (req, res) => {
   const result = loginSchema.safeParse(req.body);
   if (!result.success) return res.status(400).json({ error: 'Username and password are required' });

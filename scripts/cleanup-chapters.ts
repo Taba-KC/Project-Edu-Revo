@@ -1,3 +1,8 @@
+/**
+ * Destructive maintenance script: deletes chapter-related records from the connected
+ * database, including lesson/feedback/homework dependencies. Running this file executes
+ * cleanup immediately; it is not a normal application request or a harmless preview.
+ */
 import 'dotenv/config';
 import { db } from '../src/db';
 import {

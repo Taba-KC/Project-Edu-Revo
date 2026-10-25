@@ -1,7 +1,16 @@
+/**
+ * Server-only external AI requests for draft questions and worked memos. Keep credentials
+ * here, validate structured output and requested concept counts, and return editable drafts.
+ * Generation is not homework submission.
+ */
 import { z } from 'zod';
 import { TeacherError } from './teacherWorkspaceService';
 const questionSchema = z.object({ conceptId: z.number().int().positive(), body: z.string().trim().min(1).max(12000), memo: z.string().trim().min(1).max(24000) });
 const objectSchema = (properties: Record<string, unknown>) => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
+/**
+ * Call the provider using a private server key, enforce a timeout and parse only completed
+ * structured output. No lesson/homework rows are inserted here.
+ */
 export async function requestStructured(prompt: string, schema: Record<string, unknown>, request: typeof fetch = fetch, options?: { instructions: string; name: string; maxOutputTokens: number }) {
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new TeacherError('AI generation is not configured. You can still write manually.', 503);
@@ -16,6 +25,10 @@ export async function requestStructured(prompt: string, schema: Record<string, u
   const content = result.output?.flatMap(item => item.content ?? []).filter(item => item.type === 'output_text').map(item => item.text ?? '').join('');
   try { return JSON.parse(content || ''); } catch { throw new TeacherError('AI returned an unreadable draft. Please try again.', 502); }
 }
+/**
+ * Validate concept/count choices, request exactly those question counts and reject output
+ * that does not match the requested structure.
+ */
 export async function generateHomeworkDraft(gradeNumber: number, chapterName: string, concepts: { id: number; name: string }[], counts: { conceptId: number; count: number }[], request: typeof fetch = fetch) {
   if (new Set(counts.map(item => item.conceptId)).size !== counts.length || counts.some(item => !concepts.some(concept => concept.id === item.conceptId))) throw new TeacherError('Choose question counts for confirmed concepts only.');
   const total = counts.reduce((sum, item) => sum + item.count, 0);
@@ -26,6 +39,10 @@ export async function generateHomeworkDraft(gradeNumber: number, chapterName: st
   if (!parsed.success || parsed.data.questions.length !== total || counts.some(item => parsed.data.questions.filter(question => question.conceptId === item.conceptId).length !== item.count) || parsed.data.questions.some(question => !concepts.some(concept => concept.id === question.conceptId))) throw new TeacherError('AI did not match the requested concept counts. Your draft is unchanged; try again.', 502);
   return parsed.data;
 }
+/**
+ * Ask for a replacement memo only, using the correction note as educational data, then
+ * validate the returned text.
+ */
 export async function regenerateMemo(gradeNumber: number, concept: string, body: string, previousMemo: string, note: string, request: typeof fetch = fetch) {
   const result = await requestStructured(JSON.stringify({ task: 'Correct only the worked memo for this question. Consider the teacher correction note. Do not rewrite the question.', gradeNumber, concept, question: body, previousMemo, correctionNote: note }), objectSchema({ memo: { type: 'string' } }), request);
   const parsed = z.object({ memo: z.string().trim().min(1).max(24000) }).safeParse(result);

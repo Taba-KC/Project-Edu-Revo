@@ -1,8 +1,17 @@
+/**
+ * Planned-lesson preview feedback, which is separate from confirmed-lesson binary
+ * understanding feedback in lessonResponseService. Similar names here refer to different
+ * stages of a lesson.
+ */
 import { db } from '../db';
 import { lessonConcepts, lessonPreviewFeedback, concepts, topics, chapters } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
 
 // Flow 5 — get planned concepts for an upcoming lesson (preview)
+/**
+ * Read planned lesson concepts in curriculum order for the preview stage, separate from
+ * post-teaching understanding feedback.
+ */
 export async function getLessonPreview(lessonId: number) {
   return db.select({ id: lessonConcepts.id, lessonId: lessonConcepts.lessonId, conceptId: lessonConcepts.conceptId, createdAt: lessonConcepts.createdAt }).from(lessonConcepts)
     .innerJoin(concepts, eq(concepts.id, lessonConcepts.conceptId)).innerJoin(topics, eq(topics.id, concepts.topicId)).innerJoin(chapters, eq(chapters.id, concepts.chapterId))
@@ -10,6 +19,9 @@ export async function getLessonPreview(lessonId: number) {
 }
 
 // Flow 5 — learner submits or updates a preview reaction
+/**
+ * Update the existing learner/lesson/concept preview reaction or insert it if absent.
+ */
 export async function upsertPreviewFeedback(data: {
   learnerId: number;
   lessonId: number;

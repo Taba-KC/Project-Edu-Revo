@@ -1,3 +1,8 @@
+/**
+ * Developer check for auto assign2. This file is run explicitly, not during normal app
+ * requests. Inspect its fixtures and database target before running it; the assertions below
+ * document the behaviour being checked.
+ */
 import 'dotenv/config';
 import { db } from '../src/db';
 import { classes, classSubjects, classChapters, chapters } from '../src/db/schema';

@@ -1,3 +1,7 @@
+/**
+ * Join a class-subject allocation to a shared chapter, with an optional chapter-specific
+ * teacher assignment. This does not duplicate the chapter content for every class.
+ */
 import { pgTable, serial, integer, timestamp } from 'drizzle-orm/pg-core';
 import { classSubjects } from './classSubjects';
 import { chapters } from './chapters';

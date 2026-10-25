@@ -1,9 +1,18 @@
+/**
+ * Assemble role-scoped dashboard response data from related records. The browser receives a
+ * screen-friendly shape rather than raw tables; learner memo visibility is decided before
+ * returning data.
+ */
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db';
 import { people, learners, schools, grades, classes, subjects, classSubjects, classChapters, chapters, topics, lessons, lessonConcepts, concepts, homework, questions, lessonFeedback, questionFeedback, announcements } from '../db/schema';
 import { getCurriculum } from './curriculumService';
 export class DashboardError extends Error { constructor(message: string, public status = 404) { super(message); } }
 export type DashboardRole = 'staff' | 'learner';
+/**
+ * Build the caller's dashboard by joining permitted assignments, curriculum, lessons and
+ * homework. Filter learner memo visibility before returning JSON.
+ */
 export async function getDashboard(role: DashboardRole, accountId: number, schoolId: number, database: Pick<typeof db, 'transaction'> = db, now = new Date()) {
   return database.transaction(async tx => {
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Johannesburg', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);

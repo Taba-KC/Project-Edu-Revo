@@ -1,3 +1,8 @@
+/**
+ * Class creation, renaming, stream assignment and deletion rules. Check school ownership and
+ * naming conflicts, then keep subjects and related records consistent inside the appropriate
+ * transaction.
+ */
 import { db, pool } from '../db';
 import { classes, grades, learners, people, streams } from '../db/schema';
 import { eq, and, count, sql } from 'drizzle-orm';
@@ -23,6 +28,10 @@ export class InvalidClassNameError extends Error {}
 export class DuplicateClassNameError extends Error {}
 export class ClassNotFoundError extends Error {}
 
+/**
+ * Convert an entered class label to the canonical grade/class naming format used by
+ * uniqueness checks.
+ */
 function normalizeClassName(rawName: string, gradeNumber: number) {
   const withoutGradeWord = rawName.trim().replace(/^grade\s+/i, '');
   const identifier = withoutGradeWord
@@ -37,6 +46,10 @@ function normalizeClassName(rawName: string, gradeNumber: number) {
   return `${gradeNumber}${identifier}`;
 }
 
+/**
+ * Reject a conflicting class name in the intended scope before writing; database constraints
+ * remain the final safeguard.
+ */
 async function ensureUniqueClassName(gradeId: number, name: string, exceptClassId?: number) {
   const matchingClasses = await db
     .select({ id: classes.id })
@@ -49,6 +62,10 @@ async function ensureUniqueClassName(gradeId: number, name: string, exceptClassI
   }
 }
 
+/**
+ * Validate related school records and create the class with its teaching setup as
+ * implemented below.
+ */
 export async function createClass(data: ClassInput) {
   const [grade] = await db.select().from(grades).where(eq(grades.id, data.gradeId));
   if (!grade) throw new Error('Grade not found');
@@ -65,6 +82,9 @@ export async function createClass(data: ClassInput) {
   });
 }
 
+/**
+ * Return classes for the selected grade; callers establish whether that grade is accessible.
+ */
 export async function getClassesByGrade(gradeId: number) {
   return db
     .select({
@@ -99,6 +119,10 @@ export async function getClassesByGrade(gradeId: number) {
     .orderBy(classes.name);
 }
 
+/**
+ * Check the stream belongs to the class's school, then update and synchronize its subject
+ * allocations.
+ */
 export async function assignStreamToClass(classId: number, streamId: number) {
   return db.transaction(async tx => {
     await tx.execute(sql`select pg_advisory_xact_lock(7411, 0)`);
@@ -109,6 +133,9 @@ export async function assignStreamToClass(classId: number, streamId: number) {
   });
 }
 
+/**
+ * Validate changed class details and related records before updating the class.
+ */
 export async function updateClass(classId: number, data: ClassUpdateInput) {
   const [existing] = await db.select().from(classes).where(eq(classes.id, classId));
   if (!existing) throw new Error('Class not found');
@@ -132,6 +159,10 @@ export async function updateClass(classId: number, data: ClassUpdateInput) {
   });
 }
 
+/**
+ * Remove records depending on this class in foreign-key-safe order. This is destructive
+ * cleanup, not just hiding a sidebar page.
+ */
 export async function deleteClassContents(client: PoolClient, classIds: number[]) {
   if (classIds.length === 0) return;
 
@@ -227,6 +258,9 @@ export async function deleteClassContents(client: PoolClient, classIds: number[]
   await client.query("DELETE FROM announcements WHERE audience_type = 'class' AND audience_id = ANY($1::int[])", [classIds]);
 }
 
+/**
+ * Delete the class and its dependent data through the transaction-aware cleanup path.
+ */
 export async function deleteClassById(classId: number, gradeId: number, schoolId: number) {
   const client = await pool.connect();
   try {

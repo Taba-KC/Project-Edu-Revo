@@ -1,6 +1,13 @@
+/**
+ * Manage the shared subject catalogue. A subject record is distinct from a classSubjects
+ * allocation, which says a particular class teaches that subject.
+ */
 import { db } from '../db';
 import { subjects } from '../db/schema';
 export class DuplicateSubjectError extends Error {}
+/**
+ * Insert a subject catalogue record; class teaching assignments are separate records.
+ */
 export async function createSubject(data: { name: string }, database: Pick<typeof db, 'insert'> = db) {
   const name = data.name.trim().replace(/\s+/g, ' ');
   if (!name || name.length > 120) throw new Error('Enter a subject name (1–120 characters).');
@@ -11,4 +18,7 @@ export async function createSubject(data: { name: string }, database: Pick<typeo
     throw error;
   }
 }
+/**
+ * Read the shared subject catalogue in its implemented display order.
+ */
 export async function getAllSubjects() { return db.select().from(subjects).orderBy(subjects.name); }

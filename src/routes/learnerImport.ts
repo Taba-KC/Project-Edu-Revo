@@ -1,3 +1,9 @@
+/**
+ * HTTP routing for this feature. Older learner spreadsheet router. It is not mounted in
+ * app.ts; the current roster preview/save flow uses rosterImport. req.params contains URL
+ * IDs, req.body contains submitted JSON, and res.json sends the response. Read each
+ * handler's guards before assuming access is allowed.
+ */
 import { Router } from 'express';
 import multer from 'multer';
 import * as XLSX from 'xlsx';
@@ -7,6 +13,10 @@ import { requireAuth, requirePrincipal } from '../middleware/auth';
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
+/**
+ * POST /schools/:schoolId/classes/:classId/learners/import: Create data or run the submitted
+ * operation.
+ */
 router.post(
   '/schools/:schoolId/classes/:classId/learners/import',
   requireAuth,

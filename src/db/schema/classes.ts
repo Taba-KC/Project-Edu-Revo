@@ -1,3 +1,7 @@
+/**
+ * Named classes within a school grade, with stream and class-manager relationships. A class
+ * ID stays stable when its visible name is changed.
+ */
 import { pgTable, serial, integer, text, timestamp, unique } from 'drizzle-orm/pg-core';
 import { grades } from './grades';
 import { streams } from './streams';

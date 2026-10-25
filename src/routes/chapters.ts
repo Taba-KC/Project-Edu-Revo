@@ -1,3 +1,8 @@
+/**
+ * HTTP routing for this feature. Chapter lookup/creation and class-chapter teacher
+ * assignment endpoints. req.params contains URL IDs, req.body contains submitted JSON, and
+ * res.json sends the response. Read each handler's guards before assuming access is allowed.
+ */
 import { Router } from 'express';
 import { z } from 'zod';
 import {
@@ -25,6 +30,10 @@ const assignPersonSchema = z.object({
   personId: z.number().int().positive(),
 });
 
+/**
+ * POST /subjects/:subjectId/grades/:gradeNumber/chapters: Create data or run the submitted
+ * operation.
+ */
 router.post('/subjects/:subjectId/grades/:gradeNumber/chapters', requireAuth, requirePrincipal, async (req, res) => {
   const subjectId   = parseInt(req.params.subjectId as string);
   const gradeNumber = parseInt(req.params.gradeNumber as string);
@@ -37,6 +46,9 @@ router.post('/subjects/:subjectId/grades/:gradeNumber/chapters', requireAuth, re
 });
 
 // List all chapters for a subject and grade
+/**
+ * GET /subjects/:subjectId/grades/:gradeNumber/chapters: Read/return data.
+ */
 router.get('/subjects/:subjectId/grades/:gradeNumber/chapters', requireAuth, requirePrincipal, async (req, res) => {
   const subjectId   = parseInt(req.params.subjectId as string);
   const gradeNumber = parseInt(req.params.gradeNumber as string);
@@ -46,6 +58,10 @@ router.get('/subjects/:subjectId/grades/:gradeNumber/chapters', requireAuth, req
 });
 
 // Assign a curriculum chapter to a class
+/**
+ * POST /class-subjects/:classSubjectId/chapters/assign: Create data or run the submitted
+ * operation.
+ */
 router.post('/class-subjects/:classSubjectId/chapters/assign', requireAuth, requirePrincipal, async (req, res) => {
   const classSubjectId = parseInt(req.params.classSubjectId as string);
 
@@ -57,6 +73,10 @@ router.post('/class-subjects/:classSubjectId/chapters/assign', requireAuth, requ
 });
 
 // Assign a person to a chapter for a specific class
+/**
+ * PATCH /class-subjects/:classSubjectId/chapters/:chapterId/person: Apply an edit to an
+ * existing record.
+ */
 router.patch('/class-subjects/:classSubjectId/chapters/:chapterId/person', requireAuth, requirePrincipal, async (req, res) => {
   const classSubjectId = parseInt(req.params.classSubjectId as string);
   const chapterId      = parseInt(req.params.chapterId as string);
@@ -70,6 +90,9 @@ router.patch('/class-subjects/:classSubjectId/chapters/:chapterId/person', requi
 });
 
 // List all chapters assigned to a class
+/**
+ * GET /class-subjects/:classSubjectId/chapters: Read/return data.
+ */
 router.get('/class-subjects/:classSubjectId/chapters', requireAuth, requirePrincipal, async (req, res) => {
   const classSubjectId = parseInt(req.params.classSubjectId as string);
   const classChapterList = await getClassChapters(classSubjectId);

@@ -1,3 +1,8 @@
+/**
+ * Spreadsheet preview and atomic account import. Normalize numbers, report row errors,
+ * verify target school/class and recheck duplicates during Save because another request may
+ * have changed the database since preview.
+ */
 import * as XLSX from 'xlsx';
 import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -8,6 +13,10 @@ export interface RosterRow { title?: string; firstName: string; surname: string;
 export class RosterImportError extends Error { constructor(message: string, public status = 400) { super(message); } }
 export const rosterRowsSchema = z.object({ rows: z.array(z.object({ title: z.string().max(200).optional(), firstName: z.string().max(200), surname: z.string().max(200), identifier: z.string().max(200) })).min(1).max(500) });
 const normalise = (value: string) => value.trim().toLowerCase();
+/**
+ * Report missing/invalid fields and duplicate identifiers by row. Use the same validation
+ * during preview and final save.
+ */
 export function validateRosterRows(rows: RosterRow[], existingIdentifiers: string[], kind: RosterKind = 'staff') {
   const existing = new Set(existingIdentifiers.map(normalise));
   const counts = new Map<string, number>();
@@ -26,6 +35,10 @@ export function validateRosterRows(rows: RosterRow[], existingIdentifiers: strin
     return { row: index + 1, errors };
   }).filter(issue => issue.errors.length);
 }
+/**
+ * Read the first worksheet, require the expected headings and plain values, then normalize
+ * rows for preview.
+ */
 export function parseRosterWorkbook(buffer: Buffer, kind: RosterKind): RosterRow[] {
   let book: XLSX.WorkBook;
   try { book = XLSX.read(buffer, { type: 'buffer', sheetRows: 502 }); }
@@ -47,6 +60,9 @@ export function parseRosterWorkbook(buffer: Buffer, kind: RosterKind): RosterRow
   return rows;
 }
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+/**
+ * Verify that the destination school exists and a learner import's class belongs to it.
+ */
 async function checkTarget(tx: Transaction, schoolId: number, kind: RosterKind, classId?: number) {
   const [school] = await tx.select({ id: schools.id }).from(schools).where(eq(schools.id, schoolId));
   if (!school) throw new RosterImportError('School not found', 404);
@@ -56,11 +72,18 @@ async function checkTarget(tx: Transaction, schoolId: number, kind: RosterKind, 
     if (!cls) throw new RosterImportError('Choose a class belonging to your school.', 404);
   }
 }
+/**
+ * Read the school's staff/admission identifiers for duplicate checks without returning full
+ * account records.
+ */
 async function existingNumbers(tx: Transaction, schoolId: number, kind: RosterKind) {
   const rows = kind === 'staff' ? await tx.select({ identifier: people.staffNumber }).from(people).where(eq(people.schoolId, schoolId))
     : await tx.select({ identifier: learners.admissionNumber }).from(learners).where(eq(learners.schoolId, schoolId));
   return rows.map(row => row.identifier);
 }
+/**
+ * Return proposed rows and issues for review, without saving roster records.
+ */
 export async function previewRoster(schoolId: number, kind: RosterKind, buffer: Buffer, classId?: number, database: Pick<typeof db, 'transaction'> = db) {
   return database.transaction(async tx => {
     await checkTarget(tx, schoolId, kind, classId);
@@ -69,6 +92,10 @@ export async function previewRoster(schoolId: number, kind: RosterKind, buffer: 
     return { rows, existingIdentifiers, issues: validateRosterRows(rows, existingIdentifiers, kind) };
   });
 }
+/**
+ * Lock imports for this school, revalidate against current identifiers and insert all
+ * reviewed rows together or none.
+ */
 export async function saveRoster(schoolId: number, kind: RosterKind, rows: RosterRow[], classId?: number, database: Pick<typeof db, 'transaction'> = db) {
   const result = rosterRowsSchema.safeParse({ rows });
   if (!result.success) throw new RosterImportError('Use 1–500 rows, with text fields up to 200 characters.');

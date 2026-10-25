@@ -1,8 +1,16 @@
+/**
+ * Older bulk chapter import and assignment helpers. Compare with curriculumService for the
+ * current shared chapter/topic/concept editor before extending imports.
+ */
 import { db } from '../db';
 import { chapters, classSubjects, classChapters, classes, grades } from '../db/schema';
 import { createConcept } from './conceptService';
 import { eq, and } from 'drizzle-orm';
 
+/**
+ * Reuse/create chapter records while processing import rows, collect concept errors and link
+ * new chapters to matching allocations.
+ */
 export async function bulkImportChapters(
   rows: { chapterName: string; conceptName: string }[],
   subjectId: number,
@@ -56,6 +64,10 @@ export async function bulkImportChapters(
   };
 }
 
+/**
+ * Find active allocations with the same subject and grade, then attach this shared chapter
+ * to each.
+ */
 async function autoAssignToExistingClasses(chapterId: number, subjectId: number, gradeNumber: number) {
   const matchingClassSubjects = await db
     .select({ classSubjectId: classSubjects.id, personId: classSubjects.personId })

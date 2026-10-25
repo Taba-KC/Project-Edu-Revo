@@ -1,3 +1,8 @@
+/**
+ * Learner understanding responses attached to a lesson-concept association. Current
+ * submissions use understood or didnt_understand; historical not_sure data is retained but
+ * not counted as a third current choice.
+ */
 import { pgTable, serial, integer, text, boolean, timestamp, unique } from 'drizzle-orm/pg-core';
 import { learners } from './learners';
 import { lessonConcepts } from './lessonConcepts';

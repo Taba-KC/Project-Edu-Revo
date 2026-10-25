@@ -1,3 +1,7 @@
+/**
+ * Responses about concepts before a planned lesson is taught. This preview data is separate
+ * from confirmed-lesson understanding responses in lessonFeedback.
+ */
 import { pgTable, serial, integer, text, boolean, timestamp, unique } from 'drizzle-orm/pg-core';
 import { learners } from './learners';
 import { concepts } from './concepts';

@@ -1,3 +1,9 @@
+/**
+ * HTTP routing for this feature. Lower-level chapter concept endpoints; shared curriculum
+ * editing also has manager endpoints. req.params contains URL IDs, req.body contains
+ * submitted JSON, and res.json sends the response. Read each handler's guards before
+ * assuming access is allowed.
+ */
 import { Router } from 'express';
 import { z } from 'zod';
 import { createConcept, getConceptsByChapter } from '../services/conceptService';
@@ -12,6 +18,9 @@ const createConceptSchema = z.object({
 });
 
 // Add a concept to a chapter
+/**
+ * POST /chapters/:chapterId/concepts: Create data or run the submitted operation.
+ */
 router.post('/chapters/:chapterId/concepts', requireAuth, requirePrincipal, async (req, res) => {
   const chapterId = parseInt(req.params.chapterId as string);
 
@@ -23,6 +32,9 @@ router.post('/chapters/:chapterId/concepts', requireAuth, requirePrincipal, asyn
 });
 
 // List all concepts in a chapter
+/**
+ * GET /chapters/:chapterId/concepts: Read/return data.
+ */
 router.get('/chapters/:chapterId/concepts', requireAuth, requirePrincipal, async (req, res) => {
   const chapterId = parseInt(req.params.chapterId as string);
   const conceptList = await getConceptsByChapter(chapterId);

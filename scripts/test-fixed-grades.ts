@@ -1,3 +1,8 @@
+/**
+ * Developer check for fixed grades. This file is run explicitly, not during normal app
+ * requests. Inspect its fixtures and database target before running it; the assertions below
+ * document the behaviour being checked.
+ */
 import 'dotenv/config';
 import assert from 'node:assert/strict';
 import { and, eq } from 'drizzle-orm';

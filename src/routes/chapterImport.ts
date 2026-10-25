@@ -1,3 +1,9 @@
+/**
+ * HTTP routing for this feature. Upload and parse an older chapter spreadsheet format
+ * through the chapter import service. req.params contains URL IDs, req.body contains
+ * submitted JSON, and res.json sends the response. Read each handler's guards before
+ * assuming access is allowed.
+ */
 import { Router } from 'express';
 import multer from 'multer';
 import * as XLSX from 'xlsx';
@@ -7,6 +13,10 @@ import { requireAuth, requireDeveloper } from '../middleware/auth';
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
+/**
+ * POST /subjects/:subjectId/grades/:gradeNumber/chapters/import: Create data or run the
+ * submitted operation.
+ */
 router.post(
   '/subjects/:subjectId/grades/:gradeNumber/chapters/import',
   requireAuth,

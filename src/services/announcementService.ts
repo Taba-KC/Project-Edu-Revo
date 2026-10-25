@@ -1,7 +1,15 @@
+/**
+ * Create/read/edit/delete announcements and derive learner-visible school/class notices.
+ * Backend support here does not mean the new announcement bookshelf UI is finished.
+ */
 import { and, desc, eq, or } from 'drizzle-orm';
 import { db } from '../db';
 import { announcements, classes, people } from '../db/schema';
 
+/**
+ * Insert one announcement from the supplied fields; recipient scoping is represented by its
+ * school/class relationships.
+ */
 export async function createAnnouncement(data: {
   schoolId: number;
   createdBy: number;
@@ -14,6 +22,10 @@ export async function createAnnouncement(data: {
   return announcement;
 }
 
+/**
+ * Read announcements in the requested school, using the implemented optional class
+ * filtering.
+ */
 export async function getSchoolAnnouncements(schoolId: number) {
   return db
     .select({
@@ -35,6 +47,9 @@ export async function getSchoolAnnouncements(schoolId: number) {
     .orderBy(desc(announcements.createdAt));
 }
 
+/**
+ * Persist the supplied announcement changes and return the updated record.
+ */
 export async function updateAnnouncement(
   schoolId: number,
   announcementId: number,
@@ -59,6 +74,10 @@ export async function updateAnnouncement(
   return announcement ?? null;
 }
 
+/**
+ * Delete the announcement record. The calling route must establish the caller's right to do
+ * this.
+ */
 export async function deleteAnnouncement(schoolId: number, announcementId: number) {
   const [announcement] = await db
     .delete(announcements)
@@ -68,6 +87,10 @@ export async function deleteAnnouncement(schoolId: number, announcementId: numbe
   return announcement ?? null;
 }
 
+/**
+ * Combine the learner's school/class relationships to obtain the notices relevant to that
+ * learner.
+ */
 export async function getLearnerAnnouncements(schoolId: number, classId: number) {
   const [cls] = await db.select().from(classes).where(eq(classes.id, classId));
   if (!cls) return [];

@@ -1,3 +1,9 @@
+/**
+ * HTTP routing for this feature. Learner roster/account-claim endpoints. Read each handler's
+ * actual guards; a URL parameter alone is not permission to access a school. req.params
+ * contains URL IDs, req.body contains submitted JSON, and res.json sends the response. Read
+ * each handler's guards before assuming access is allowed.
+ */
 import { Router } from 'express';
 import { z } from 'zod';
 import { getSchoolById } from '../services/schoolService';
@@ -28,6 +34,9 @@ const onboardingSchema = z.object({
 });
 
 // Add a learner to a class
+/**
+ * POST /schools/:schoolId/learners: Create data or run the submitted operation.
+ */
 router.post('/schools/:schoolId/learners', requireAuth, requirePrincipal, async (req, res) => {
   const schoolId = parseInt(req.params.schoolId as string);
   const school = await getSchoolById(schoolId);
@@ -41,6 +50,9 @@ router.post('/schools/:schoolId/learners', requireAuth, requirePrincipal, async 
 });
 
 // List all learners in a class
+/**
+ * GET /schools/:schoolId/classes/:classId/learners: Read/return data.
+ */
 router.get('/schools/:schoolId/classes/:classId/learners', requireAuth, requirePrincipal, async (req, res) => {
   const schoolId = parseInt(req.params.schoolId as string);
   const classId = parseInt(req.params.classId as string);
@@ -53,6 +65,9 @@ router.get('/schools/:schoolId/classes/:classId/learners', requireAuth, requireP
 });
 
 // Learner onboarding — look up account before claiming
+/**
+ * POST /learners/onboarding/lookup: Create data or run the submitted operation.
+ */
 router.post('/learners/onboarding/lookup', async (req, res) => {
   const lookupSchema = z.object({
     schoolCode:      z.string().min(1),
@@ -72,6 +87,9 @@ router.post('/learners/onboarding/lookup', async (req, res) => {
 });
 
 // Learner onboarding — claim account and set username + password
+/**
+ * POST /learners/onboarding: Create data or run the submitted operation.
+ */
 router.post('/learners/onboarding', async (req, res) => {
   const result = onboardingSchema.safeParse(req.body);
   if (!result.success) return res.status(400).json({ error: result.error.flatten() });

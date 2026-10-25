@@ -1,3 +1,7 @@
+/**
+ * Re-export table definitions so services can import several tables from one place. These
+ * exports describe storage; migrations are what change an existing database.
+ */
 export * from './provinces';
 export * from './districts';
 export * from './circuits';

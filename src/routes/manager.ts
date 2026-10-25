@@ -1,3 +1,9 @@
+/**
+ * HTTP routing for this feature. Manager access checks and shared curriculum load, preview
+ * and revision-aware save operations. req.params contains URL IDs, req.body contains
+ * submitted JSON, and res.json sends the response. Read each handler's guards before
+ * assuming access is allowed.
+ */
 import { Router } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
@@ -15,7 +21,13 @@ router.use('/manager', requireAuth, async (req, res, next) => {
   if (!manager?.active) return res.status(403).json({ error: 'App manager account is inactive' });
   next();
 });
+/**
+ * GET /manager/subjects: Read/return data.
+ */
 router.get('/manager/subjects', async (_req, res) => res.json(await db.select().from(subjects).orderBy(subjects.name)));
+/**
+ * POST /manager/subjects: Create data or run the submitted operation.
+ */
 router.post('/manager/subjects', async (req, res) => {
   const result = z.object({ name: z.string().trim().min(1).max(120) }).safeParse(req.body);
   if (!result.success) return res.status(400).json({ error: 'Enter a subject name (1–120 characters).' });
@@ -23,6 +35,9 @@ router.post('/manager/subjects', async (req, res) => {
   catch (error) { if (error instanceof DuplicateSubjectError) return res.status(409).json({ error: 'That subject already exists.' }); throw error; }
 });
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024, files: 1, fields: 0 } });
+/**
+ * POST /manager/curricula/preview: Create data or run the submitted operation.
+ */
 router.post('/manager/curricula/preview', (req, res, next) => {
   upload.single('file')(req, res, error => { if (error) return res.status(400).json({ error: 'Upload one spreadsheet, up to 2 MB.' }); next(); });
 }, (req, res) => {
@@ -31,11 +46,17 @@ router.post('/manager/curricula/preview', (req, res, next) => {
   catch (error) { return res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid spreadsheet.' }); }
 });
 const selection = z.object({ subjectId: z.coerce.number().int().positive(), gradeNumber: z.coerce.number().int().min(8).max(12) });
+/**
+ * GET /manager/curricula/:subjectId/:gradeNumber: Read/return data.
+ */
 router.get('/manager/curricula/:subjectId/:gradeNumber', async (req, res) => {
   const result = selection.safeParse(req.params);
   if (!result.success) return res.status(400).json({ error: 'Choose a subject and grade (8–12).' });
   return res.json(await getCurriculum(result.data.subjectId, result.data.gradeNumber));
 });
+/**
+ * POST /manager/curricula: Create data or run the submitted operation.
+ */
 router.post('/manager/curricula', async (req, res) => {
   const result = curriculumSchema.safeParse(req.body);
   if (!result.success) return res.status(400).json({ error: 'Check the subject, grade and labels. Labels must contain 1–1,000 characters.' });

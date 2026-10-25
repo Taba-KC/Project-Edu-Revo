@@ -1,3 +1,7 @@
+/**
+ * Location hierarchy: a circuit belongs to a district and can contain schools. Foreign keys
+ * link the hierarchy instead of repeating parent names.
+ */
 import { pgTable, serial, text, integer, timestamp } from 'drizzle-orm/pg-core';
 import { districts } from './districts';
 

@@ -1,3 +1,6 @@
+/**
+ * Top-level location records. Districts refer to their province through its ID.
+ */
 import { pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core';
 
 export const provinces = pgTable('provinces', {

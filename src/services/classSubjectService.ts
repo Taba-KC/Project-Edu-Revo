@@ -1,3 +1,8 @@
+/**
+ * Synchronize a class's subject allocations with its stream and assign subject teachers.
+ * Deactivate removed allocations rather than deleting their teaching history. Chapter
+ * overrides can differ from the default teacher.
+ */
 import { db } from '../db';
 import { classes, grades, streams, streamSubjects, classSubjects, subjects, people, chapters, classChapters } from '../db/schema';
 import { eq, and, inArray, sql } from 'drizzle-orm';
@@ -6,6 +11,10 @@ export class SetupError extends Error {
   constructor(message: string, public status = 400) { super(message); }
 }
 
+/**
+ * Reconcile active allocations with the chosen stream. Keep historical allocation IDs, and
+ * link missing shared chapters for this grade.
+ */
 export async function syncClassSubjects(tx: SetupTransaction, classId: number) {
   await tx.execute(sql`select pg_advisory_xact_lock(7411, 0)`);
   const [cls] = await tx.select().from(classes).where(eq(classes.id, classId)).for('update');
@@ -32,11 +41,18 @@ export async function syncClassSubjects(tx: SetupTransaction, classId: number) {
   }
 }
 
+/**
+ * Resynchronize every class using this stream after its subject memberships change.
+ */
 export async function syncStreamClasses(tx: SetupTransaction, streamId: number) {
   const rows = await tx.select({ id: classes.id }).from(classes).where(eq(classes.streamId, streamId)).orderBy(classes.id);
   for (const row of rows) await syncClassSubjects(tx, row.id);
 }
 
+/**
+ * Join subject and optional teacher names into a display response, scoped to the requested
+ * school and class.
+ */
 export async function getClassSubjects(schoolId: number, classId: number) {
   return db.select({ id: classSubjects.id, subjectId: subjects.id, subjectName: subjects.name, personId: classSubjects.personId,
     teacherTitle: people.title, teacherFirstName: people.firstName, teacherSurname: people.surname })
@@ -46,6 +62,10 @@ export async function getClassSubjects(schoolId: number, classId: number) {
     .where(and(eq(grades.schoolId, schoolId), eq(classes.id, classId), eq(classSubjects.active, true))).orderBy(subjects.name);
 }
 
+/**
+ * Validate a school-local teaching account, update the allocation default and preserve
+ * genuine chapter-specific overrides.
+ */
 export async function assignSubjectTeacher(tx: SetupTransaction, schoolId: number, classId: number, classSubjectId: number, personId: number | null) {
   await tx.execute(sql`select pg_advisory_xact_lock(7411, 0)`);
   await tx.select({ id: classes.id }).from(classes).where(eq(classes.id, classId)).for('update');

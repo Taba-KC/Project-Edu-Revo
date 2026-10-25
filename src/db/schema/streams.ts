@@ -1,3 +1,7 @@
+/**
+ * School-specific groups of subjects. Subject memberships are in streamSubjects; classes
+ * choose a stream to obtain their teaching allocations.
+ */
 import { pgTable, serial, text, integer, timestamp } from 'drizzle-orm/pg-core';
 import { schools } from './schools';
 

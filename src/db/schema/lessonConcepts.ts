@@ -1,3 +1,8 @@
+/**
+ * Relationship between a lesson and the concepts included in it. teachingBrief can preserve
+ * guidance at teaching time. The same global concept can appear in several lessons without
+ * losing its earlier associations.
+ */
 import { pgTable, serial, integer, timestamp, unique, jsonb } from 'drizzle-orm/pg-core';
 import { lessons } from './lessons';
 import { concepts } from './concepts';

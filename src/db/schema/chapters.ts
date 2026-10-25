@@ -1,3 +1,7 @@
+/**
+ * Shared chapter records for a subject and grade. orderIndex controls curriculum position;
+ * active lets edits retire content without erasing historical references.
+ */
 import { pgTable, serial, integer, text, timestamp, boolean } from 'drizzle-orm/pg-core';
 import { subjects } from './subjects';
 

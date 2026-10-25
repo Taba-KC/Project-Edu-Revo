@@ -1,3 +1,7 @@
+/**
+ * Ordered topics within a chapter. Concepts point to their topic so curriculum can be
+ * arranged and edited without encoding hierarchy in names.
+ */
 import { pgTable, serial, integer, text, boolean, timestamp, unique } from 'drizzle-orm/pg-core';
 import { chapters } from './chapters';
 export const topics = pgTable('topics', {

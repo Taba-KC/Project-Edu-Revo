@@ -1,3 +1,8 @@
+/**
+ * One-off maintenance operation that loads curated concept guidance from scripts/data and
+ * updates shared curriculum records. It changes the connected database when run; normal
+ * lesson planning reads the saved guidance instead.
+ */
 import 'dotenv/config';
 import fs from 'node:fs';
 import path from 'node:path';

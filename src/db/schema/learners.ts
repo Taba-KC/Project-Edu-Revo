@@ -1,3 +1,7 @@
+/**
+ * Learner school/class membership, admission identity and optional claimed login
+ * credentials. passwordHash must not be displayed as learner account information.
+ */
 import { pgTable, serial, text, integer, boolean, timestamp, unique } from 'drizzle-orm/pg-core';
 import { classes } from './classes';
 import { schools } from './schools';

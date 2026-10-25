@@ -1,3 +1,8 @@
+/**
+ * Older per-question feedback/progress storage. Its existence does not introduce homework
+ * feedback into the current teacher book; current understanding feedback is on lesson
+ * concepts.
+ */
 import { pgTable, serial, integer, text, boolean, timestamp, unique } from 'drizzle-orm/pg-core';
 import { learners } from './learners';
 import { questions } from './questions';

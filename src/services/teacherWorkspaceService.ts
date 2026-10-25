@@ -1,3 +1,9 @@
+/**
+ * Main teacher workflow rules: verify teaching ownership, prepare planning concepts, save
+ * plans, confirm teaching and send homework. Related writes use transactions so failures
+ * roll back. This is the service used by the current teacher-books UI, rather than the
+ * simpler older lesson service.
+ */
 import { and, eq, inArray, desc, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { people, grades, classes, classSubjects, classChapters, chapters, topics, concepts, lessons, lessonConcepts, homework, questions, learners, lessonFeedback, lessonReviewConcepts } from '../db/schema';
@@ -7,7 +13,15 @@ import type { AuthPayload } from '../middleware/auth';
 export class TeacherError extends Error { constructor(message: string, public status = 400) { super(message); } }
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Database = Pick<typeof db, 'transaction'>;
+/**
+ * Compare lesson dates using the school's South African calendar date, not the server's
+ * local timezone.
+ */
 export function schoolDate(now = new Date()) { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Johannesburg', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now); }
+/**
+ * Verify the live account, school and allocation/chapter ownership. A teacher token alone is
+ * not permission to edit every class subject.
+ */
 export async function teacherScope(tx: Tx, caller: AuthPayload, classSubjectId: number, chapterId?: number) {
   const [person] = await tx.select().from(people).where(and(eq(people.id, caller.accountId), eq(people.schoolId, caller.schoolId ?? -1), eq(people.accountSetUp, true)));
   if (caller.accountType !== 'person' || !person || !['teacher', 'principal'].includes(person.role)) throw new TeacherError('Teaching access required.', 403);
@@ -19,18 +33,30 @@ export async function teacherScope(tx: Tx, caller: AuthPayload, classSubjectId: 
   if (chapterId ? !owned.some(chapter => chapter.id === chapterId) : !owned.length && allocation.personId !== person.id) throw new TeacherError('You are not assigned to this chapter or class subject.', 403);
   return { allocation, chapters: owned };
 }
+/**
+ * Resolve the lesson, then reuse allocation/chapter authorization before returning it to a
+ * write operation.
+ */
 export async function lessonScope(tx: Tx, caller: AuthPayload, lessonId: number) {
   const [lesson] = await tx.select().from(lessons).where(eq(lessons.id, lessonId));
   if (!lesson) throw new TeacherError('Lesson not found.', 404);
   await teacherScope(tx, caller, lesson.classSubjectId, lesson.chapterId);
   return lesson;
 }
+/**
+ * Build eligible choices from confirmed teaching history and queued review suggestions.
+ * Include ten untaught concepts plus reviews, preserving curriculum order.
+ */
 export async function getPlanning(caller: AuthPayload, classSubjectId: number, database: Database = db) {
   return database.transaction(async tx => {
     const scope = await teacherScope(tx, caller, classSubjectId);
     const history = await tx.select().from(lessons).where(eq(lessons.classSubjectId, classSubjectId)).orderBy(desc(lessons.date), desc(lessons.id));
     const confirmed = history.filter(row => row.status === 'confirmed');
     const items = confirmed.length ? await tx.select().from(lessonConcepts).where(inArray(lessonConcepts.lessonId, confirmed.map(row => row.id))) : [];
+    /**
+     * Only associations from confirmed lessons count as taught; a plan alone is not proof of
+     * teaching.
+     */
     const taught = new Set(items.map(item => item.conceptId));
     const progress = scope.chapters.map(chapter => { const count = chapter.topics.flatMap(topic => topic.concepts); return { ...chapter, total: count.length, taught: count.filter(concept => taught.has(concept.id)).length }; });
     const current = progress.find(chapter => chapter.taught < chapter.total) ?? progress[progress.length - 1] ?? null;
@@ -51,11 +77,20 @@ export async function getPlanning(caller: AuthPayload, classSubjectId: number, d
     const draft = await tx.select().from(lessonReviewConcepts).where(and(eq(lessonReviewConcepts.classSubjectId, classSubjectId), eq(lessonReviewConcepts.personId, caller.accountId)));
     const ordered = await orderedTeachingConcepts(tx, scope.chapters.map(chapter => chapter.id), classSubjectId);
     const reviewConcepts = ordered.filter(concept => draft.some(item => item.conceptId === concept.id));
+    /**
+     * Limit ordinary planning choices to the next ten untaught concepts; reviews are added
+     * separately, then merged in curriculum order.
+     */
     const nextConcepts = ordered.filter(concept => !taught.has(concept.id)).slice(0, 10);
     const planningConcepts = ordered.filter(concept => nextConcepts.some(next => next.id === concept.id) || reviewConcepts.some(review => review.id === concept.id));
     return { chapter: current, customConcepts, reviewConcepts, planningConcepts, taughtConceptIds: Array.from(taught), flaggedConcepts: flags, suggestedDate: schoolDate(), aiAvailable: !!process.env.OPENAI_API_KEY };
   });
 }
+/**
+ * Recheck eligibility inside a transaction, save the plan and its concept links, then
+ * consume the suggestions this form reviewed. Unchecked old concepts remain taught in their
+ * original lessons.
+ */
 export async function savePlan(caller: AuthPayload, classSubjectId: number, data: { chapterId: number; date: string; conceptIds: number[]; reviewConceptIds?: number[]; customConcepts?: { name: string; topicId: number }[] }, database: Database = db) {
   return database.transaction(async tx => {
     await tx.execute(sql`select pg_advisory_xact_lock(7413, ${classSubjectId})`);
@@ -66,6 +101,10 @@ export async function savePlan(caller: AuthPayload, classSubjectId: number, data
     const review = ordered.filter(concept => draft.some(item => item.conceptId === concept.id));
     const taughtItems = await tx.select({ conceptId: lessonConcepts.conceptId }).from(lessonConcepts).innerJoin(lessons, eq(lessons.id, lessonConcepts.lessonId)).where(and(eq(lessons.classSubjectId, classSubjectId), eq(lessons.status, 'confirmed')));
     const taught = new Set(taughtItems.map(item => item.conceptId));
+    /**
+     * Recalculate eligible IDs at Save time. Never trust a stale browser list or unchecked
+     * client-side validation.
+     */
     const valid = new Set(ordered.filter(concept => !taught.has(concept.id)).slice(0, 10).map(concept => concept.id));
     review.forEach(concept => valid.add(concept.id));
     if (data.conceptIds.some(id => !valid.has(id))) throw new TeacherError('Choose from the first 10 untaught concepts or concepts added from lesson feedback. Refresh the plan if teaching has changed.');
@@ -77,6 +116,10 @@ export async function savePlan(caller: AuthPayload, classSubjectId: number, data
     // Custom concepts are additive lesson content, never part of the shared ATP library.
     const created = custom.length ? await tx.insert(concepts).values(custom.map((item, index) => ({ chapterId: chapter.id, classSubjectId, topicId: item.topicId, name: item.name.trim(), orderIndex: 100000 + index, isCustom: true }))).returning() : [];
     const selected = new Set([...data.conceptIds, ...created.map(row => row.id)]);
+    /**
+     * A lesson may cross a chapter boundary. Keep a primary chapter for the lesson while concept
+     * links retain their actual chapter relationships.
+     */
     const primaryChapterId = ordered.find(concept => selected.has(concept.id))?.chapterId ?? chapter.id;
     const [plan] = await tx.insert(lessons).values({ classSubjectId, chapterId: primaryChapterId, date: data.date, status: 'planned' }).returning();
     const curriculumOrder = await orderedTeachingConcepts(tx, scope.chapters.map(chapter => chapter.id), classSubjectId);
@@ -88,6 +131,10 @@ export async function savePlan(caller: AuthPayload, classSubjectId: number, data
     return plan!;
   });
 }
+/**
+ * Lock and authorize the plan, reject early/repeated confirmation, keep only taught
+ * selections and freeze their current guidance before setting confirmed status.
+ */
 export async function confirmPlan(caller: AuthPayload, lessonId: number, conceptIds: number[], database: Database = db, now = new Date()) {
   return database.transaction(async tx => {
     await tx.select().from(lessons).where(eq(lessons.id, lessonId)).for('update');
@@ -96,6 +143,10 @@ export async function confirmPlan(caller: AuthPayload, lessonId: number, concept
     if (lesson.date > schoolDate(now)) throw new TeacherError('Confirm the lesson on or after its date.');
     const planned = await tx.select().from(lessonConcepts).where(eq(lessonConcepts.lessonId, lessonId));
     if (new Set(conceptIds).size !== conceptIds.length || conceptIds.some(id => !planned.some(item => item.conceptId === id))) throw new TeacherError('Only planned concepts can be confirmed.');
+    /**
+     * Remove only this lesson's untaught links. Earlier confirmed lessons keep their own
+     * associations to the same global concepts.
+     */
     const omitted = planned.filter(item => !conceptIds.includes(item.conceptId));
     if (omitted.length) await tx.delete(lessonConcepts).where(inArray(lessonConcepts.id, omitted.map(item => item.id)));
     // Planned lessons use current shared guidance; freeze it only when taught.
@@ -109,6 +160,10 @@ export async function confirmPlan(caller: AuthPayload, lessonId: number, concept
     return confirmed!;
   });
 }
+/**
+ * Authorize a confirmed lesson and return its taught concepts plus whether homework already
+ * exists. The composer uses this to restrict question choices.
+ */
 export async function getHomeworkContext(caller: AuthPayload, lessonId: number, database: Database = db) {
   return database.transaction(async tx => {
     const lesson = await lessonScope(tx, caller, lessonId);
@@ -120,6 +175,10 @@ export async function getHomeworkContext(caller: AuthPayload, lessonId: number, 
   });
 }
 export type HomeworkInput = { dueDate: string; memoReleaseType: 'immediately' | 'at_due_date' | 'custom'; memoReleaseAt?: string; questions: { conceptId: number; body: string; memo?: string }[] };
+/**
+ * Lock the lesson, validate all questions and release times, then insert the set and
+ * questions together. An error rolls back both writes.
+ */
 export async function sendHomework(caller: AuthPayload, lessonId: number, data: HomeworkInput, database: Database = db, now = new Date()) {
   return database.transaction(async tx => {
     // Serialize sends for this lesson so retries never create partial or duplicate sets.
@@ -127,6 +186,9 @@ export async function sendHomework(caller: AuthPayload, lessonId: number, data: 
     const context = await getHomeworkContext(caller, lessonId, tx);
     if (context.existingHomeworkId) throw new TeacherError('This lesson already has homework.', 409);
     if (!data.questions.length || data.questions.some(question => !context.concepts.some(concept => concept.id === question.conceptId) || !question.body.trim())) throw new TeacherError('Each question must test a concept confirmed in this lesson.');
+    /**
+     * Parse browser timestamps and validate time policy before any homework row is committed.
+     */
     const dueDate = new Date(data.dueDate), memoReleaseAt = data.memoReleaseAt ? new Date(data.memoReleaseAt) : null;
     if (!Number.isFinite(dueDate.getTime()) || dueDate <= now || (data.memoReleaseType === 'custom' && (!memoReleaseAt || !Number.isFinite(memoReleaseAt.getTime())))) throw new TeacherError('Choose a future due date and a valid memo release time.');
     const [set] = await tx.insert(homework).values({ lessonId, dueDate, memoReleaseType: data.memoReleaseType, memoReleaseAt: data.memoReleaseType === 'custom' ? memoReleaseAt : null }).returning();
@@ -135,6 +197,10 @@ export async function sendHomework(caller: AuthPayload, lessonId: number, data: 
   });
 }
 
+/**
+ * Resolve the question's lesson and authorize that lesson before persisting the replacement
+ * memo.
+ */
 export async function updateQuestionMemo(caller: AuthPayload, questionId: number, memo: string, database: Database = db) {
  return database.transaction(async tx=>{
   const [question]=await tx.select({id:questions.id,lessonId:homework.lessonId}).from(questions).innerJoin(homework,eq(homework.id,questions.homeworkId)).where(eq(questions.id,questionId));

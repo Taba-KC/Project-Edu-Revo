@@ -1,3 +1,7 @@
+/**
+ * Location hierarchy: each district belongs to a province. Circuits refer to district IDs,
+ * not the displayed district name.
+ */
 import { pgTable, serial, text, integer, timestamp } from 'drizzle-orm/pg-core';
 import { provinces } from './provinces';
 

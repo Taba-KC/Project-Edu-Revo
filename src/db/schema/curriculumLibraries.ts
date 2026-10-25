@@ -1,3 +1,7 @@
+/**
+ * Revision number for each shared subject/grade curriculum. The editor submits its revision
+ * so a stale browser cannot silently overwrite a newer save.
+ */
 import { pgTable, serial, integer, timestamp, unique } from 'drizzle-orm/pg-core';
 import { subjects } from './subjects';
 export const curriculumLibraries = pgTable('curriculum_libraries', {

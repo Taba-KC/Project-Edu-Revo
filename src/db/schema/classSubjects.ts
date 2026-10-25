@@ -1,3 +1,7 @@
+/**
+ * Teaching allocation linking a class to a subject and its default teacher. active preserves
+ * older allocation IDs and history when a stream no longer includes the subject.
+ */
 import { pgTable, serial, integer, timestamp, unique, boolean } from 'drizzle-orm/pg-core';
 import { classes } from './classes';
 import { subjects } from './subjects';

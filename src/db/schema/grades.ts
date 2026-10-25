@@ -1,3 +1,7 @@
+/**
+ * A school's grade records. number is the educational grade (such as 11); id is the database
+ * identity used by class relationships.
+ */
 import { pgTable, serial, integer, timestamp, unique, check } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { schools } from './schools';

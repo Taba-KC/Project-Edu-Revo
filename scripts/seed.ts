@@ -1,3 +1,8 @@
+/**
+ * Explicit database seed script. It creates the sample/setup records shown below using the
+ * configured database connection. It does not run automatically when an HTTP request
+ * arrives.
+ */
 import 'dotenv/config';
 import { db } from '../src/db';
 import { provinces, districts, circuits, schools } from '../src/db/schema';

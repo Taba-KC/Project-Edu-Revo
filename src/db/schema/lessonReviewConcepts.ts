@@ -1,3 +1,7 @@
+/**
+ * Pending Add to next lesson suggestions scoped to a teacher and class subject. A draft
+ * suggestion is not a new confirmed lesson and does not alter original taught history.
+ */
 import { pgTable, serial, integer, timestamp, unique } from 'drizzle-orm/pg-core';
 import { classSubjects } from './classSubjects';
 import { people } from './people';

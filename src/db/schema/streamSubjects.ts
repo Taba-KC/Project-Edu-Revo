@@ -1,3 +1,7 @@
+/**
+ * Many-to-many link between streams and subjects. One row means this stream includes that
+ * subject; it does not assign a teacher to a class.
+ */
 import { pgTable, serial, integer, timestamp, unique } from 'drizzle-orm/pg-core';
 import { streams } from './streams';
 import { subjects } from './subjects';

@@ -1,3 +1,8 @@
+/**
+ * HTTP routing for this feature. Staff roster and account-claim endpoints. req.params
+ * contains URL IDs, req.body contains submitted JSON, and res.json sends the response. Read
+ * each handler's guards before assuming access is allowed.
+ */
 import { Router } from 'express';
 import { z } from 'zod';
 import { getSchoolById } from '../services/schoolService';
@@ -28,6 +33,9 @@ const onboardingSchema = z.object({
 });
 
 // Add a person to a school
+/**
+ * POST /schools/:schoolId/people: Create data or run the submitted operation.
+ */
 router.post('/schools/:schoolId/people', requireAuth, requirePrincipal, async (req, res) => {
   const schoolId = parseInt(req.params.schoolId as string);
   const school = await getSchoolById(schoolId);
@@ -41,6 +49,9 @@ router.post('/schools/:schoolId/people', requireAuth, requirePrincipal, async (r
 });
 
 // List all people in a school
+/**
+ * GET /schools/:schoolId/people: Read/return data.
+ */
 router.get('/schools/:schoolId/people', requireAuth, requirePrincipal, async (req, res) => {
   const schoolId = parseInt(req.params.schoolId as string);
   const school = await getSchoolById(schoolId);
@@ -51,6 +62,9 @@ router.get('/schools/:schoolId/people', requireAuth, requirePrincipal, async (re
 });
 
 // Person onboarding — look up account before claiming
+/**
+ * POST /people/onboarding/lookup: Create data or run the submitted operation.
+ */
 router.post('/people/onboarding/lookup', async (req, res) => {
   const lookupSchema = z.object({
     schoolCode:  z.string().min(1),
@@ -70,6 +84,9 @@ router.post('/people/onboarding/lookup', async (req, res) => {
 });
 
 // Person onboarding — claim account and set username + password
+/**
+ * POST /people/onboarding: Create data or run the submitted operation.
+ */
 router.post('/people/onboarding', async (req, res) => {
   const result = onboardingSchema.safeParse(req.body);
   if (!result.success) return res.status(400).json({ error: result.error.flatten() });

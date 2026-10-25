@@ -1,7 +1,16 @@
+/**
+ * Create/activate school records and read the location-linked school structure. Activation
+ * creates related setup records as implemented below; normal school information is separate
+ * from login tokens.
+ */
 import { db } from '../db';
 import { schools } from '../db/schema';
 import { eq, isNull } from 'drizzle-orm';
 
+/**
+ * Build the supplied location/school setup records; this is a write operation, not a
+ * read-only school lookup.
+ */
 export async function seedSchool(data: {
   circuitId: number;
   name: string;
@@ -11,15 +20,25 @@ export async function seedSchool(data: {
   return school;
 }
 
+/**
+ * Read available school records using the query below.
+ */
 export async function getAllSchools() {
   return db.select().from(schools);
 }
 
+/**
+ * Find one school by its permanent database ID.
+ */
 export async function getSchoolById(id: number) {
   const [school] = await db.select().from(schools).where(eq(schools.id, id));
   return school ?? null;
 }
 
+/**
+ * Validate the activation information and create the school setup records defined by this
+ * workflow.
+ */
 export async function activateSchool(data: {
   schoolId: number;
   code: string;

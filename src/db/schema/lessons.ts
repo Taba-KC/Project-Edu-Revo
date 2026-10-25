@@ -1,3 +1,7 @@
+/**
+ * A lesson for a class-subject allocation, with planned/confirmed status and a permanent
+ * lessonNumber. Sidebar page numbering is unrelated to this saved lesson sequence.
+ */
 import { pgTable, serial, integer, text, date, timestamp, unique } from 'drizzle-orm/pg-core';
 import { chapters } from './chapters';
 import { classSubjects } from './classSubjects';

@@ -1,5 +1,13 @@
+/**
+ * Development request logging around Express handlers. A log helps trace which request ran;
+ * it is not a durable business audit trail.
+ */
 import { Request, Response, NextFunction } from 'express';
 
+/**
+ * Record incoming request activity for diagnosis. Call next so the matching route can
+ * continue handling the request.
+ */
 export function requestLogger(req: Request, res: Response, next: NextFunction) {
   console.log(`${req.method} ${req.path}`);
   next();

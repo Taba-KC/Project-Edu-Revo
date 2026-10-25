@@ -1,7 +1,14 @@
+/**
+ * Staff roster creation, listing and account claiming. Staff IDs/roles belong to people
+ * records; password hashes are authentication data, not display fields for the register.
+ */
 import { db } from '../db';
 import { classChapters, classSubjects, chapters, people, schools } from '../db/schema';
 import { and, count, eq, sql } from 'drizzle-orm';
 
+/**
+ * Create a staff roster record, separate from the later account-claim step.
+ */
 export async function addPerson(data: {
   title: string;
   firstName: string;
@@ -13,6 +20,10 @@ export async function addPerson(data: {
   return person;
 }
 
+/**
+ * Select staff display/account-status fields for the register rather than returning password
+ * hashes.
+ */
 export async function getPeopleBySchool(schoolId: number) {
   return db
     .select({
@@ -49,6 +60,9 @@ export async function getPeopleBySchool(schoolId: number) {
     .orderBy(people.surname);
 }
 
+/**
+ * Insert staff roster rows through the lower-level bulk helper.
+ */
 export async function bulkAddPeople(
   staff: { title: string; firstName: string; surname: string; staffNumber: string }[],
   schoolId: number,
@@ -75,6 +89,9 @@ export async function bulkAddPeople(
   return { succeeded: succeeded.length, failed: errors.length, errors };
 }
 
+/**
+ * Find an existing staff record from its school and claim details.
+ */
 export async function findPersonForOnboarding(schoolCode: string, staffNumber: string, initials: string) {
   const [school] = await db.select().from(schools).where(eq(schools.code, schoolCode));
   if (!school) return null;
@@ -89,6 +106,9 @@ export async function findPersonForOnboarding(schoolCode: string, staffNumber: s
   return person;
 }
 
+/**
+ * Save claimed staff credentials with a password hash rather than a plaintext password.
+ */
 export async function completePeopleOnboarding(personId: number, username: string, passwordHash: string) {
   const [updated] = await db.update(people)
     .set({ username, passwordHash, accountSetUp: true })

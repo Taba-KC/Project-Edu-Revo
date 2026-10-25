@@ -1,3 +1,8 @@
+/**
+ * Resolve the shared subject/grade curriculum from an active class allocation and add this
+ * class's confirmed teaching coverage. Coverage is not a universal taught flag on shared
+ * concepts.
+ */
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db';
 import { classes, grades, classSubjects, subjects, lessons, lessonConcepts } from '../db/schema';
@@ -5,6 +10,10 @@ import { getCurriculum } from './curriculumService';
 import { SetupError } from './classSubjectService';
 
 // Derive subject and grade from the active class allocation, never client input.
+/**
+ * Resolve the active allocation's shared content and combine it with confirmed teaching
+ * history into a read-only curriculum/coverage response.
+ */
 export async function getClassCurriculum(schoolId: number, classId: number, classSubjectId: number, database: Pick<typeof db, 'transaction'> = db) {
   return database.transaction(async tx => {
     const [allocation] = await tx.select({ subjectId: subjects.id, subjectName: subjects.name, gradeNumber: grades.number, className: classes.name })

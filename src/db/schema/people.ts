@@ -1,3 +1,7 @@
+/**
+ * School staff records, including principal/teacher role and account-claim credentials.
+ * Learners and app managers have their own account tables.
+ */
 import { pgTable, serial, text, integer, boolean, timestamp, unique } from 'drizzle-orm/pg-core';
 import { schools } from './schools';
 
