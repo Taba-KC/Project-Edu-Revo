@@ -1,11 +1,10 @@
 /**
- * Learner roster and account-claim operations. These are older low-level helpers; callers
- * must enforce access. In particular, the raw class listing should not be treated as an
- * example of a minimal safe public response.
+ * Learner roster and account-claim operations. Callers enforce administrative access;
+ * creation validates the class and records membership, while listings omit credentials.
  */
 import { db } from '../db';
-import { learners, schools } from '../db/schema';
-import { eq, and } from 'drizzle-orm';
+import { learners, schools, classes, grades, learnerClassHistory, learnerStreamSelections, streams } from '../db/schema';
+import { eq, and, sql } from 'drizzle-orm';
 
 /**
  * Create a learner roster record using the supplied school/class information.
@@ -17,16 +16,27 @@ export async function addLearner(data: {
   schoolId: number;
   classId: number;
 }) {
-  const [learner] = await db.insert(learners).values(data).returning();
-  return learner;
+  return db.transaction(async tx => {
+    await tx.execute(sql`select pg_advisory_xact_lock(7411,0)`);
+    await tx.execute(sql`select pg_advisory_xact_lock(7412,${data.schoolId})`);
+    const [target] = await tx.select({year:classes.academicYear}).from(classes).innerJoin(grades,eq(grades.id,classes.gradeId)).where(and(eq(classes.id,data.classId),eq(grades.schoolId,data.schoolId)));
+    if(!target) throw new Error('Choose a class in your school.');
+    const [learner] = await tx.insert(learners).values(data).returning();
+    await tx.insert(learnerClassHistory).values({learnerId:learner.id,classId:data.classId,academicYear:target.year});
+    return learner;
+  });
 }
 
 /**
- * Read learner rows for a class. This raw selection includes account fields; do not expose
- * it as a new public DTO without explicit safe-field selection and authorization.
+ * Return register fields and the current subject confirmation. Delegated administrators
+ * need names and activation state, never learner passwords or credential hashes.
  */
 export async function getLearnersByClass(classId: number) {
-  return db.select().from(learners).where(eq(learners.classId, classId)).orderBy(learners.surname);
+  return db.select({id:learners.id,firstName:learners.firstName,surname:learners.surname,admissionNumber:learners.admissionNumber,schoolId:learners.schoolId,classId:learners.classId,accountSetUp:learners.accountSetUp,username:learners.username,createdAt:learners.createdAt,selectedStreamName:streams.name})
+    .from(learners).innerJoin(classes,eq(classes.id,learners.classId))
+    .leftJoin(learnerStreamSelections,and(eq(learnerStreamSelections.learnerId,learners.id),eq(learnerStreamSelections.classId,classes.id),eq(learnerStreamSelections.academicYear,classes.academicYear),eq(learnerStreamSelections.revision,classes.streamRevision)))
+    .leftJoin(streams,eq(streams.id,learnerStreamSelections.streamId))
+    .where(eq(learners.classId, classId)).orderBy(learners.surname);
 }
 
 /**

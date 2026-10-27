@@ -13,6 +13,7 @@ import {
   getClassChapters,
 } from '../services/chapterService';
 import { requireAuth, requirePrincipal } from '../middleware/auth';
+import { requireCurriculumReader } from '../middleware/schoolAdministration';
 
 const router = Router();
 
@@ -49,7 +50,7 @@ router.post('/subjects/:subjectId/grades/:gradeNumber/chapters', requireAuth, re
 /**
  * GET /subjects/:subjectId/grades/:gradeNumber/chapters: Read/return data.
  */
-router.get('/subjects/:subjectId/grades/:gradeNumber/chapters', requireAuth, requirePrincipal, async (req, res) => {
+router.get('/subjects/:subjectId/grades/:gradeNumber/chapters', requireAuth, requireCurriculumReader, async (req, res) => {
   const subjectId   = parseInt(req.params.subjectId as string);
   const gradeNumber = parseInt(req.params.gradeNumber as string);
 

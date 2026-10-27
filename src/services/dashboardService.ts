@@ -7,6 +7,7 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db';
 import { people, learners, schools, grades, classes, subjects, classSubjects, classChapters, chapters, topics, lessons, lessonConcepts, concepts, homework, questions, lessonFeedback, questionFeedback, announcements } from '../db/schema';
 import { getCurriculum } from './curriculumService';
+import { learnerSubjectIds } from './classStreamService';
 export class DashboardError extends Error { constructor(message: string, public status = 404) { super(message); } }
 export type DashboardRole = 'staff' | 'learner';
 /**
@@ -15,6 +16,7 @@ export type DashboardRole = 'staff' | 'learner';
  */
 export async function getDashboard(role: DashboardRole, accountId: number, schoolId: number, database: Pick<typeof db, 'transaction'> = db, now = new Date()) {
   return database.transaction(async tx => {
+    const enrolled=role==='learner'?await learnerSubjectIds(tx,{accountId,schoolId,accountType:'learner'}):[];
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Johannesburg', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
     const [school] = await tx.select({ id: schools.id, name: schools.name }).from(schools).where(eq(schools.id, schoolId));
     if (!school) throw new DashboardError('School not found');
@@ -29,7 +31,7 @@ export async function getDashboard(role: DashboardRole, accountId: number, schoo
     if (role === 'learner' && !learnerClass) throw new DashboardError('Your class could not be found. Contact your school administrator.');
     const allocations = await tx.select({ id: classSubjects.id, subjectId: subjects.id, subjectName: subjects.name, classId: classes.id, className: classes.name, gradeId: grades.id, gradeNumber: grades.number, streamId: classes.streamId, personId: classSubjects.personId })
       .from(classSubjects).innerJoin(subjects, eq(subjects.id, classSubjects.subjectId)).innerJoin(classes, eq(classes.id, classSubjects.classId)).innerJoin(grades, eq(grades.id, classes.gradeId))
-      .where(and(eq(grades.schoolId, schoolId), eq(classSubjects.active, true), ...(role === 'learner' ? [eq(classes.id, learnerClass!.id)] : [])))
+      .where(and(eq(grades.schoolId, schoolId), eq(classSubjects.active, true), ...(role === 'learner' ? [eq(classes.id, learnerClass!.id),inArray(classSubjects.subjectId,enrolled.length?enrolled:[-1])] : [])))
       .orderBy(subjects.name, grades.number, classes.name);
     const links = allocations.length ? await tx.select({ classSubjectId: classChapters.classSubjectId, chapterId: chapters.id, subjectId: chapters.subjectId, gradeNumber: chapters.gradeNumber, personId: classChapters.personId }).from(classChapters)
       .innerJoin(chapters, eq(chapters.id, classChapters.chapterId)).where(and(inArray(classChapters.classSubjectId, allocations.map(row => row.id)), eq(chapters.active, true))) : [];

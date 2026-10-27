@@ -1,3 +1,4 @@
+import { subjectRoster } from './classStreamService';
 /**
  * Main teacher workflow rules: verify teaching ownership, prepare planning concepts, save
  * plans, confirm teaching and send homework. Related writes use transactions so failures
@@ -61,7 +62,7 @@ export async function getPlanning(caller: AuthPayload, classSubjectId: number, d
     const progress = scope.chapters.map(chapter => { const count = chapter.topics.flatMap(topic => topic.concepts); return { ...chapter, total: count.length, taught: count.filter(concept => taught.has(concept.id)).length }; });
     const current = progress.find(chapter => chapter.taught < chapter.total) ?? progress[progress.length - 1] ?? null;
     const customConcepts = current ? await tx.select({ id: concepts.id, name: concepts.name, topicId: concepts.topicId }).from(concepts).where(and(eq(concepts.chapterId, current.id), eq(concepts.classSubjectId, classSubjectId), eq(concepts.active, true), eq(concepts.isCustom, true))).orderBy(concepts.orderIndex, concepts.id) : [];
-    const roster = await tx.select({ id: learners.id }).from(learners).where(eq(learners.classId, scope.allocation.classId));
+    const roster = await subjectRoster(tx,classSubjectId);
     const reactions = items.length && roster.length ? await tx.select({ lessonConceptId: lessonFeedback.lessonConceptId, reaction: lessonFeedback.reaction }).from(lessonFeedback).where(and(inArray(lessonFeedback.lessonConceptId, items.map(item => item.id)), inArray(lessonFeedback.learnerID, roster.map(row => row.id)))) : [];
     const flags = [...(current?.topics.flatMap(topic => topic.concepts) ?? []), ...customConcepts].flatMap(concept => {
       for (const lesson of confirmed) {
@@ -83,7 +84,7 @@ export async function getPlanning(caller: AuthPayload, classSubjectId: number, d
      */
     const nextConcepts = ordered.filter(concept => !taught.has(concept.id)).slice(0, 10);
     const planningConcepts = ordered.filter(concept => nextConcepts.some(next => next.id === concept.id) || reviewConcepts.some(review => review.id === concept.id)).map(concept => ({ ...concept, reviewGoals: draft.find(item => item.conceptId === concept.id)?.reviewGoals ?? [] }));
-    return { chapter: current, customConcepts, reviewConcepts, planningConcepts, taughtConceptIds: Array.from(taught), flaggedConcepts: flags, suggestedDate: schoolDate(), aiAvailable: !!process.env.OPENAI_API_KEY };
+    return { chapter: current, chapters: scope.chapters.map(chapter => ({ id: chapter.id, name: chapter.name, topics: chapter.topics.map(topic => ({ id: topic.id, name: topic.name })) })), customConcepts, reviewConcepts, planningConcepts, taughtConceptIds: Array.from(taught), flaggedConcepts: flags, suggestedDate: schoolDate(), aiAvailable: !!process.env.OPENAI_API_KEY };
   });
 }
 /**
@@ -112,18 +113,22 @@ export async function savePlan(caller: AuthPayload, classSubjectId: number, data
     const custom = data.customConcepts ?? [];
     if (!data.conceptIds.length && !custom.length) throw new TeacherError('Choose at least one concept.');
     if (data.conceptIds.length + custom.length > 120) throw new TeacherError('A lesson can include at most 120 concepts, including lesson reviews.');
-    if (custom.some(item => !chapter.topics.some(topic => topic.id === item.topicId))) throw new TeacherError('Custom concepts need a topic in this chapter.');
+    // Resolve each topic only through chapters this teacher currently owns. Never trust
+    // a chapter association supplied by the browser, including after an assignment changes.
+    const topicChapters = new Map(scope.chapters.flatMap(chapter => chapter.topics.map(topic => [topic.id, chapter.id] as const)));
+    if (custom.some(item => !topicChapters.has(item.topicId))) throw new TeacherError('Custom concepts need a topic in one of your assigned chapters.');
     // Custom concepts are additive lesson content, never part of the shared ATP library.
-    const created = custom.length ? await tx.insert(concepts).values(custom.map((item, index) => ({ chapterId: chapter.id, classSubjectId, topicId: item.topicId, name: item.name.trim(), orderIndex: 100000 + index, isCustom: true }))).returning() : [];
+    const created = custom.length ? await tx.insert(concepts).values(custom.map((item, index) => ({ chapterId: topicChapters.get(item.topicId)!, classSubjectId, topicId: item.topicId, name: item.name.trim(), orderIndex: 100000 + index, isCustom: true }))).returning() : [];
     const selected = new Set([...data.conceptIds, ...created.map(row => row.id)]);
     /**
      * A lesson may cross a chapter boundary. Keep a primary chapter for the lesson while concept
      * links retain their actual chapter relationships.
      */
-    const primaryChapterId = ordered.find(concept => selected.has(concept.id))?.chapterId ?? chapter.id;
-    const [plan] = await tx.insert(lessons).values({ classSubjectId, chapterId: primaryChapterId, date: data.date, status: 'planned' }).returning();
     const curriculumOrder = await orderedTeachingConcepts(tx, scope.chapters.map(chapter => chapter.id), classSubjectId);
-    await tx.insert(lessonConcepts).values(curriculumOrder.filter(concept => selected.has(concept.id)).map(concept => ({ lessonId: plan!.id, conceptId: concept.id, reviewGoals: draft.find(item => item.conceptId === concept.id)?.reviewGoals ?? [], teachingBrief: { conceptName: concept.name, prerequisites: concept.prerequisites, learningOutcomes: concept.learningOutcomes } })));
+    const included = curriculumOrder.filter(concept => selected.has(concept.id));
+    const primaryChapterId = included[0]?.chapterId ?? chapter.id;
+    const [plan] = await tx.insert(lessons).values({ classSubjectId, chapterId: primaryChapterId, date: data.date, status: 'planned' }).returning();
+    await tx.insert(lessonConcepts).values(included.map(concept => ({ lessonId: plan!.id, conceptId: concept.id, reviewGoals: draft.find(item => item.conceptId === concept.id)?.reviewGoals ?? [], teachingBrief: { conceptName: concept.name, prerequisites: concept.prerequisites, learningOutcomes: concept.learningOutcomes } })));
     // Consume both accepted and declined suggestions shown by this form. Suggestions
     // added in another tab after it loaded stay queued for the following plan.
     const reviewed = review.filter(concept => (data.reviewConceptIds ?? review.map(row => row.id)).includes(concept.id));

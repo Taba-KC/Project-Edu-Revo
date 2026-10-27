@@ -1,3 +1,4 @@
+import { subjectRoster } from './classStreamService';
 /**
  * Aggregate Yes/No learning-goal feedback for confirmed lessons and queue concepts for
  * review. An added concept goes to an upcoming owned plan when possible, otherwise to a
@@ -26,7 +27,7 @@ export async function getLessonFeedback(caller: AuthPayload, classSubjectId: num
       .from(lessons).innerJoin(chapters, eq(chapters.id, lessons.chapterId))
       .where(and(eq(lessons.classSubjectId, classSubjectId), inArray(lessons.chapterId, chapterIds), eq(lessons.status, 'confirmed'))).orderBy(desc(lessons.lessonNumber)).limit(10);
     if (!sets.length) return [];
-    const roster = await tx.select({ id: learners.id }).from(learners).where(eq(learners.classId, scope.allocation.classId));
+    const roster = await subjectRoster(tx,classSubjectId);
     const items = await tx.select({ id: lessonConcepts.id, lessonId: lessonConcepts.lessonId, conceptId: concepts.id, name: concepts.name, teachingBrief: lessonConcepts.teachingBrief, learningOutcomes: concepts.learningOutcomes }).from(lessonConcepts)
       .innerJoin(concepts, eq(concepts.id, lessonConcepts.conceptId)).innerJoin(topics, eq(topics.id, concepts.topicId)).innerJoin(chapters, eq(chapters.id, concepts.chapterId))
       .where(inArray(lessonConcepts.lessonId, sets.map(set => set.id))).orderBy(chapters.orderIndex, chapters.id, topics.orderIndex, topics.id, concepts.orderIndex, concepts.id);
@@ -58,7 +59,7 @@ export async function addLessonConceptToNextLesson(caller: AuthPayload, lessonId
     const [item] = await tx.select({ id: lessonConcepts.id, teachingBrief: lessonConcepts.teachingBrief }).from(lessonConcepts).where(and(eq(lessonConcepts.lessonId, lessonId), eq(lessonConcepts.conceptId, conceptId))).limit(1);
     const ordered = await orderedTeachingConcepts(tx, scope.chapters.map(chapter => chapter.id), classSubjectId);
     if (!item || !ordered.some(concept => concept.id === conceptId)) throw new TeacherError('Choose an active concept from this lesson and your teaching allocation.');
-    const roster = await tx.select({ id: learners.id }).from(learners).where(eq(learners.classId, scope.allocation.classId));
+    const roster = await subjectRoster(tx,classSubjectId);
     const responses = roster.length ? await tx.select({ learnerId: lessonFeedback.learnerID, goalResponses: lessonFeedback.goalResponses }).from(lessonFeedback).where(and(eq(lessonFeedback.lessonConceptId, item.id), inArray(lessonFeedback.learnerID, roster.map(learner => learner.id)))) : [];
     const goals = item.teachingBrief?.learningOutcomes ?? ordered.find(concept => concept.id === conceptId)!.learningOutcomes;
     const reviewGoals = goalUnderstanding(goals, responses, roster.length).filter(goal => goal.no > 0).map(goal => goal.goal);

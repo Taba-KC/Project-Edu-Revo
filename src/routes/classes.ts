@@ -17,15 +17,17 @@ import {
   InvalidClassNameError,
 } from '../services/classService';
 import { getSchoolById } from '../services/schoolService';
-import { requireAuth, requirePrincipal } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 
 import { db } from '../db';
 import { grades, classes } from '../db/schema';
 import { and, eq } from 'drizzle-orm';
 import { SetupError } from '../services/classSubjectService';
 
+import { requireSchoolAdministration } from "../middleware/schoolAdministration";
+const requireSchoolAdmin = requireSchoolAdministration(["grades"],["grades", "learners", "curriculum"]);
 const router = Router();
-router.use('/schools/:schoolId/grades/:gradeId/classes', requireAuth, requirePrincipal, async (req, res, next) => {
+router.use('/schools/:schoolId/grades/:gradeId/classes', requireAuth, requireSchoolAdmin, async (req, res, next) => {
   const schoolId = Number(req.params.schoolId), gradeId = Number(req.params.gradeId);
   if (!Number.isSafeInteger(gradeId) || gradeId <= 0) return res.status(400).json({ error: 'Invalid grade ID' });
   if (schoolId !== req.caller?.schoolId) return res.status(403).json({ error: 'School access denied' });
@@ -61,7 +63,7 @@ const assignStreamSchema = z.object({
  * POST /schools/:schoolId/grades/:gradeId/classes: Create data or run the submitted
  * operation.
  */
-router.post('/schools/:schoolId/grades/:gradeId/classes', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
+router.post('/schools/:schoolId/grades/:gradeId/classes', requireAuth, requireSchoolAdmin, async (req: Request, res: Response) => {
   const schoolId = parseInt(req.params.schoolId as string);
   const gradeId = parseInt(req.params.gradeId as string);
 
@@ -101,7 +103,7 @@ router.post('/schools/:schoolId/grades/:gradeId/classes', requireAuth, requirePr
 /**
  * GET /schools/:schoolId/grades/:gradeId/classes: Read/return data.
  */
-router.get('/schools/:schoolId/grades/:gradeId/classes', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
+router.get('/schools/:schoolId/grades/:gradeId/classes', requireAuth, requireSchoolAdmin, async (req: Request, res: Response) => {
   const schoolId = parseInt(req.params.schoolId as string);
   const gradeId = parseInt(req.params.gradeId as string);
 
@@ -124,7 +126,7 @@ router.get('/schools/:schoolId/grades/:gradeId/classes', requireAuth, requirePri
  * POST /schools/:schoolId/grades/:gradeId/classes/:classId/stream: Create data or run the
  * submitted operation.
  */
-router.post('/schools/:schoolId/grades/:gradeId/classes/:classId/stream', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
+router.post('/schools/:schoolId/grades/:gradeId/classes/:classId/stream', requireAuth, requireSchoolAdmin, async (req: Request, res: Response) => {
   const schoolId = parseInt(req.params.schoolId as string);
   const gradeId = parseInt(req.params.gradeId as string);
   const classId = parseInt(req.params.classId as string);
@@ -154,7 +156,7 @@ router.post('/schools/:schoolId/grades/:gradeId/classes/:classId/stream', requir
  * PATCH /schools/:schoolId/grades/:gradeId/classes/:classId: Apply an edit to an existing
  * record.
  */
-router.patch('/schools/:schoolId/grades/:gradeId/classes/:classId', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
+router.patch('/schools/:schoolId/grades/:gradeId/classes/:classId', requireAuth, requireSchoolAdmin, async (req: Request, res: Response) => {
   const schoolId = parseInt(req.params.schoolId as string);
   const gradeId = parseInt(req.params.gradeId as string);
   const classId = parseInt(req.params.classId as string);
@@ -196,7 +198,7 @@ router.patch('/schools/:schoolId/grades/:gradeId/classes/:classId', requireAuth,
  * DELETE /schools/:schoolId/grades/:gradeId/classes/:classId: Remove data through the
  * handler below.
  */
-router.delete('/schools/:schoolId/grades/:gradeId/classes/:classId', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
+router.delete('/schools/:schoolId/grades/:gradeId/classes/:classId', requireAuth, requireSchoolAdmin, async (req: Request, res: Response) => {
   const schoolId = parseInt(req.params.schoolId as string);
   const gradeId = parseInt(req.params.gradeId as string);
   const classId = parseInt(req.params.classId as string);

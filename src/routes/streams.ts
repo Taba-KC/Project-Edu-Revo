@@ -16,14 +16,16 @@ import {
   getStreamSubjects,
 } from '../services/streamService';
 import { getSchoolById } from '../services/schoolService';
-import { requireAuth, requirePrincipal } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 
 import { db } from '../db';
 import { streams as streamTable, streamSubjects as streamSubjectTable } from '../db/schema';
 import { and, eq } from 'drizzle-orm';
 
+import { requireSchoolAdministration } from "../middleware/schoolAdministration";
+const requireSchoolAdmin = requireSchoolAdministration(["streams"],["streams", "grades", "curriculum"]);
 const router = Router();
-router.use('/schools/:schoolId/streams', requireAuth, requirePrincipal, (req, res, next) => {
+router.use('/schools/:schoolId/streams', requireAuth, requireSchoolAdmin, (req, res, next) => {
   if (Number(req.params.schoolId) !== req.caller?.schoolId) return res.status(403).json({ error: 'School access denied' });
   next();
 });
@@ -51,7 +53,7 @@ const addSubjectSchema = z.object({
 /**
  * POST /schools/:schoolId/streams: Create data or run the submitted operation.
  */
-router.post('/schools/:schoolId/streams', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
+router.post('/schools/:schoolId/streams', requireAuth, requireSchoolAdmin, async (req: Request, res: Response) => {
   const schoolId = parseInt(req.params.schoolId as string);
   if (isNaN(schoolId)) {
     res.status(400).json({ error: 'Invalid school ID' });
@@ -77,7 +79,7 @@ router.post('/schools/:schoolId/streams', requireAuth, requirePrincipal, async (
 /**
  * GET /schools/:schoolId/streams: Read/return data.
  */
-router.get('/schools/:schoolId/streams', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
+router.get('/schools/:schoolId/streams', requireAuth, requireSchoolAdmin, async (req: Request, res: Response) => {
   const schoolId = parseInt(req.params.schoolId as string);
   if (isNaN(schoolId)) {
     res.status(400).json({ error: 'Invalid school ID' });
@@ -97,7 +99,7 @@ router.get('/schools/:schoolId/streams', requireAuth, requirePrincipal, async (r
 /**
  * PATCH /schools/:schoolId/streams/:streamId: Apply an edit to an existing record.
  */
-router.patch('/schools/:schoolId/streams/:streamId', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
+router.patch('/schools/:schoolId/streams/:streamId', requireAuth, requireSchoolAdmin, async (req: Request, res: Response) => {
   const schoolId = parseInt(req.params.schoolId as string);
   const streamId = parseInt(req.params.streamId as string);
 
@@ -124,7 +126,7 @@ router.patch('/schools/:schoolId/streams/:streamId', requireAuth, requirePrincip
 /**
  * DELETE /schools/:schoolId/streams/:streamId: Remove data through the handler below.
  */
-router.delete('/schools/:schoolId/streams/:streamId', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
+router.delete('/schools/:schoolId/streams/:streamId', requireAuth, requireSchoolAdmin, async (req: Request, res: Response) => {
   const schoolId = parseInt(req.params.schoolId as string);
   const streamId = parseInt(req.params.streamId as string);
 
@@ -141,7 +143,7 @@ router.delete('/schools/:schoolId/streams/:streamId', requireAuth, requirePrinci
  * POST /schools/:schoolId/streams/:streamId/subjects: Create data or run the submitted
  * operation.
  */
-router.post('/schools/:schoolId/streams/:streamId/subjects', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
+router.post('/schools/:schoolId/streams/:streamId/subjects', requireAuth, requireSchoolAdmin, async (req: Request, res: Response) => {
   const schoolId = parseInt(req.params.schoolId as string);
   const streamId = parseInt(req.params.streamId as string);
 
@@ -166,7 +168,7 @@ router.post('/schools/:schoolId/streams/:streamId/subjects', requireAuth, requir
 /**
  * GET /schools/:schoolId/streams/:streamId/subjects: Read/return data.
  */
-router.get('/schools/:schoolId/streams/:streamId/subjects', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
+router.get('/schools/:schoolId/streams/:streamId/subjects', requireAuth, requireSchoolAdmin, async (req: Request, res: Response) => {
   const streamId = parseInt(req.params.streamId as string);
   if (isNaN(streamId)) {
     res.status(400).json({ error: 'Invalid stream ID' });
@@ -181,7 +183,7 @@ router.get('/schools/:schoolId/streams/:streamId/subjects', requireAuth, require
  * PATCH /schools/:schoolId/streams/:streamId/subjects/:streamSubjectId: Apply an edit to an
  * existing record.
  */
-router.patch('/schools/:schoolId/streams/:streamId/subjects/:streamSubjectId', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
+router.patch('/schools/:schoolId/streams/:streamId/subjects/:streamSubjectId', requireAuth, requireSchoolAdmin, async (req: Request, res: Response) => {
   const streamSubjectId = parseInt(req.params.streamSubjectId as string);
 
   if (isNaN(streamSubjectId)) {
@@ -211,7 +213,7 @@ router.patch('/schools/:schoolId/streams/:streamId/subjects/:streamSubjectId', r
  * DELETE /schools/:schoolId/streams/:streamId/subjects/:streamSubjectId: Remove data through
  * the handler below.
  */
-router.delete('/schools/:schoolId/streams/:streamId/subjects/:streamSubjectId', requireAuth, requirePrincipal, async (req: Request, res: Response) => {
+router.delete('/schools/:schoolId/streams/:streamId/subjects/:streamSubjectId', requireAuth, requireSchoolAdmin, async (req: Request, res: Response) => {
   const streamSubjectId = parseInt(req.params.streamSubjectId as string);
 
   if (isNaN(streamSubjectId)) {

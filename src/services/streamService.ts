@@ -3,7 +3,7 @@
  * affected class allocations, so a stream change can affect more than the stream register.
  */
 import { db } from '../db';
-import { streams, streamSubjects, subjects, classes } from '../db/schema';
+import { streams, streamSubjects, subjects, classes, classStreams } from '../db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { syncStreamClasses, syncClassSubjects } from './classSubjectService';
 
@@ -42,8 +42,13 @@ export async function deleteStream(streamId: number) {
   await db.transaction(async tx => {
     await tx.execute(sql`select pg_advisory_xact_lock(7411, 0)`);
     await tx.select().from(streams).where(eq(streams.id, streamId)).for('update');
-    const affected = await tx.update(classes).set({ streamId: null }).where(eq(classes.streamId, streamId)).returning();
-    for (const cls of affected) await syncClassSubjects(tx, cls.id);
+    const affected = await tx.selectDistinct({id:classes.id}).from(classes).leftJoin(classStreams,eq(classStreams.classId,classes.id)).where(sql`${classes.streamId}=${streamId} or ${classStreams.streamId}=${streamId}`);
+    await tx.delete(classStreams).where(eq(classStreams.streamId,streamId));
+    for(const cls of affected){
+      const remaining=await tx.select().from(classStreams).where(eq(classStreams.classId,cls.id)).orderBy(classStreams.streamId);
+      await tx.update(classes).set({streamId:remaining[0]?.streamId??null,streamRevision:sql`${classes.streamRevision}+1`}).where(eq(classes.id,cls.id));
+      await syncClassSubjects(tx,cls.id);
+    }
     await tx.delete(streamSubjects).where(eq(streamSubjects.streamId, streamId));
     await tx.delete(streams).where(eq(streams.id, streamId));
   });

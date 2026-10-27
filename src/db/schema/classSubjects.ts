@@ -2,12 +2,14 @@
  * Teaching allocation linking a class to a subject and its default teacher. active preserves
  * older allocation IDs and history when a stream no longer includes the subject.
  */
+import { sql } from 'drizzle-orm';
 import { pgTable, serial, integer, timestamp, unique, boolean } from 'drizzle-orm/pg-core';
 import { classes } from './classes';
 import { subjects } from './subjects';
 import { people } from './people';
 
 export const classSubjects = pgTable('class_subjects', {
+  academicYear: integer('academic_year').notNull().default(sql`EXTRACT(YEAR FROM CURRENT_DATE)::integer`),
   lessonCount: integer('lesson_count').notNull().default(0),
   id:        serial('id').primaryKey(),
   classId:   integer('class_id').notNull().references(() => classes.id),
@@ -16,7 +18,7 @@ export const classSubjects = pgTable('class_subjects', {
   active: boolean('active').notNull().default(true),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => [
-  unique().on(table.classId, table.subjectId),
+  unique('class_subjects_class_subject_year_unique').on(table.classId, table.subjectId, table.academicYear),
 ]);
 
 

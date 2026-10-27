@@ -75,7 +75,25 @@ async function run(){let checks=0;const rollback=new Error('Rollback teacher wor
  await confirmPlan(caller,crossing.id,[second!.id,later[0]!.id],tx,new Date('2026-10-10'));
  const afterCrossing=await getPlanning(caller,allocation!.id,tx);assert.equal(afterCrossing.planningConcepts.length,10);assert.ok(!afterCrossing.planningConcepts.some(item=>[first!.id,second!.id,later[0]!.id].includes(item.id)));checks++;
  assert.deepEqual(afterCrossing.reviewConcepts,[]);assert.ok(afterCrossing.taughtConceptIds.includes(first!.id));checks++;
+ // Custom concepts can span assigned chapters and retain the actual topic/chapter pairs.
+ const chapterChoices=await getPlanning(caller,allocation!.id,tx);
+ assert.deepEqual(chapterChoices.chapters.map(row=>row.id),[chapter!.id,nextChapter!.id]);
+ assert.deepEqual(chapterChoices.chapters[1]!.topics.map(row=>row.id),[nextTopic!.id]);checks++;
+ const customOnly=await savePlan(caller,allocation!.id,{chapterId:chapter!.id,date:'2026-10-10',conceptIds:[],customConcepts:[{name:'Later chapter example',topicId:nextTopic!.id}]},tx);
+ assert.equal(customOnly.chapterId,nextChapter!.id);
+ const [customOnlyLink]=await tx.select().from(lessonConcepts).where(eq(lessonConcepts.lessonId,customOnly.id));
+ const [laterCustom]=await tx.select().from(concepts).where(eq(concepts.id,customOnlyLink!.conceptId));
+ assert.equal(laterCustom!.chapterId,nextChapter!.id);assert.equal(laterCustom!.topicId,nextTopic!.id);assert.equal(laterCustom!.classSubjectId,allocation!.id);assert.equal(laterCustom!.isCustom,true);checks++;
+ const mixed=await savePlan(caller,allocation!.id,{chapterId:chapter!.id,date:'2026-10-10',conceptIds:[],customConcepts:[{name:'Second chapter first in payload',topicId:nextTopic!.id},{name:'First chapter second in payload',topicId:topic!.id}]},tx);
+ assert.equal(mixed.chapterId,chapter!.id);
+ const mixedLinks=await tx.select().from(lessonConcepts).where(eq(lessonConcepts.lessonId,mixed.id));
+ assert.equal(mixedLinks.length,2);checks++;
+ const [wrongTopic]=await tx.insert(topics).values({chapterId:wrongGrade!.id,name:'Wrong grade topic',orderIndex:1}).returning();
+ await assert.rejects(savePlan(caller,allocation!.id,{chapterId:chapter!.id,date:'2026-10-10',conceptIds:[],customConcepts:[{name:'Not permitted',topicId:wrongTopic!.id}]},tx),TeacherError);checks++;
+ await assert.rejects(savePlan(caller,allocation!.id,{chapterId:chapter!.id,date:'2026-10-10',conceptIds:[],customConcepts:[{name:'Unknown topic',topicId:2147483647}]},tx),TeacherError);checks++;
  await tx.insert(classChapters).values({classSubjectId:allocation!.id,chapterId:chapter!.id,personId:stranger!.id});await assert.rejects(savePlan(caller,allocation!.id,{chapterId:chapter!.id,date:'2026-10-10',conceptIds:[second!.id]},tx),TeacherError);checks++;
+ const scopedChoices=await getPlanning(caller,allocation!.id,tx);assert.deepEqual(scopedChoices.chapters.map(row=>row.id),[nextChapter!.id]);checks++;
+ await assert.rejects(savePlan(caller,allocation!.id,{chapterId:nextChapter!.id,date:'2026-10-10',conceptIds:[],customConcepts:[{name:'Reassigned topic',topicId:topic!.id}]},tx),TeacherError);checks++;
  throw rollback;
  });}catch(error){if(error!==rollback)throw error;}
  const originalKey=process.env.OPENAI_API_KEY;process.env.OPENAI_API_KEY='test-key-not-live';

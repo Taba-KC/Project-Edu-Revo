@@ -12,7 +12,7 @@ export const learners = pgTable('learners', {
   surname:         text('surname').notNull(),
   admissionNumber: text('admission_number').notNull(),
   schoolId:        integer('school_id').notNull().references(() => schools.id),
-  classId:         integer('class_id').notNull().references(() => classes.id),
+  classId:         integer('class_id').references(() => classes.id),
   username:        text('username').unique(),
   passwordHash:    text('password_hash'),
   accountSetUp:    boolean('account_set_up').notNull().default(false),

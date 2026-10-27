@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { and, eq } from 'drizzle-orm';
 import { db, pool } from '../src/db';
 import { circuits, schools, grades, classes, people, learners, subjects, classSubjects, chapters, topics, concepts, lessons, lessonConcepts, homework, questions, lessonFeedback, lessonReviewConcepts } from '../src/db/schema';
+import { StreamChoiceError } from '../src/services/classStreamService';
 import { getLearnerWorkspace, getLearnerAnswer, answerRelease } from '../src/services/learnerWorkspaceService';
 import { submitLearningGoalFeedback } from '../src/services/lessonResponseService';
 import { getLessonFeedback, addLessonConceptToNextLesson } from '../src/services/teacherLessonFeedbackService';
@@ -42,10 +43,10 @@ async function run() {
       const links = await tx.insert(lessonConcepts).values(conceptRows.slice(0, 2).map(concept => ({ lessonId: source!.id, conceptId: concept.id, teachingBrief: { conceptName: concept.name, prerequisites: concept.prerequisites, learningOutcomes: concept.learningOutcomes } }))).returning();
       // Later curriculum edits must not change the goals being answered for a completed lesson.
       await tx.update(concepts).set({ learningOutcomes: ['Edited shared goal'] }).where(eq(concepts.id, conceptRows[0]!.id));
-      await assert.rejects(submitLearningGoalFeedback(outsider, links[0]!.id, { goalIndex: 0, answer: 'no' }, tx), TeacherError);
-      await assert.rejects(submitLearningGoalFeedback({ ...caller, schoolId: -1 }, links[0]!.id, { goalIndex: 0, answer: 'no' }, tx), TeacherError);
-      await assert.rejects(submitLearningGoalFeedback(caller, links[0]!.id, { goalIndex: 2, answer: 'no' }, tx), TeacherError);
-      await assert.rejects(submitLearningGoalFeedback(caller, links[0]!.id, { goalIndex: 0, answer: 'maybe' as any }, tx), TeacherError);
+      await assert.rejects(submitLearningGoalFeedback(outsider, links[0]!.id, { goalIndex: 0, answer: 'no' }, tx), (error: unknown) => error instanceof TeacherError || error instanceof StreamChoiceError);
+      await assert.rejects(submitLearningGoalFeedback({ ...caller, schoolId: -1 }, links[0]!.id, { goalIndex: 0, answer: 'no' }, tx), (error: unknown) => error instanceof TeacherError || error instanceof StreamChoiceError);
+      await assert.rejects(submitLearningGoalFeedback(caller, links[0]!.id, { goalIndex: 2, answer: 'no' }, tx), (error: unknown) => error instanceof TeacherError || error instanceof StreamChoiceError);
+      await assert.rejects(submitLearningGoalFeedback(caller, links[0]!.id, { goalIndex: 0, answer: 'maybe' as any }, tx), (error: unknown) => error instanceof TeacherError || error instanceof StreamChoiceError);
       await submitLearningGoalFeedback(caller, links[0]!.id, { goalIndex: 0, answer: 'no' }, tx);
       await submitLearningGoalFeedback(caller, links[0]!.id, { goalIndex: 1, answer: 'yes' }, tx);
       await submitLearningGoalFeedback(caller, links[0]!.id, { goalIndex: 1, answer: 'no' }, tx);
@@ -72,11 +73,11 @@ async function run() {
       assert.ok(!JSON.stringify(workspace).includes('SECRET')); assert.ok(!JSON.stringify(workspace).includes('passwordHash'));
       assert.equal((await getLearnerWorkspace(otherLearner, tx, before)).subjects[0]!.lessons[1]!.concepts[0]!.answers[0], 'yes');
       assert.equal((await getLearnerWorkspace(outsider, tx)).subjects.length, 0);
-      await assert.rejects(getLearnerWorkspace(staff, tx), TeacherError);
-      await assert.rejects(getLearnerAnswer(caller, questionRows[1]!.id, tx, before), TeacherError);
+      await assert.rejects(getLearnerWorkspace(staff, tx), (error: unknown) => error instanceof TeacherError || error instanceof StreamChoiceError);
+      await assert.rejects(getLearnerAnswer(caller, questionRows[1]!.id, tx, before), (error: unknown) => error instanceof TeacherError || error instanceof StreamChoiceError);
       assert.equal((await getLearnerAnswer(caller, questionRows[1]!.id, tx, release)).memo, 'SECRET detailed memo 1');
       assert.equal((await getLearnerAnswer(caller, questionRows[0]!.id, tx, before)).memo, 'SECRET detailed memo 0');
-      await assert.rejects(getLearnerAnswer(outsider, questionRows[0]!.id, tx, release), TeacherError);
+      await assert.rejects(getLearnerAnswer(outsider, questionRows[0]!.id, tx, release), (error: unknown) => error instanceof TeacherError || error instanceof StreamChoiceError);
       // Goal focus persists into the queued draft and the selected next plan, in curriculum order.
       await addLessonConceptToNextLesson(staff, source!.id, conceptRows[0]!.id, tx, release);
       const planning = await getPlanning(staff, allocation!.id, tx);
@@ -85,7 +86,7 @@ async function run() {
       const [review] = await tx.select().from(lessonConcepts).where(and(eq(lessonConcepts.lessonId, plan.id), eq(lessonConcepts.conceptId, conceptRows[0]!.id)));
       assert.deepEqual(review!.reviewGoals, ['Goal 0 A', 'Goal 0 B']);
       assert.equal((await tx.select().from(lessonReviewConcepts).where(eq(lessonReviewConcepts.classSubjectId, allocation!.id))).length, 0);
-      await assert.rejects(submitLearningGoalFeedback(caller, links[0]!.id, { goalIndex: 0, answer: 'yes' }, tx), TeacherError);
+      await assert.rejects(submitLearningGoalFeedback(caller, links[0]!.id, { goalIndex: 0, answer: 'yes' }, tx), (error: unknown) => error instanceof TeacherError || error instanceof StreamChoiceError);
       await submitClosedReview();
       async function submitClosedReview() {
         await addLessonConceptToNextLesson(staff, source!.id, conceptRows[0]!.id, tx, release);

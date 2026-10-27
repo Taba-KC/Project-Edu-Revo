@@ -4,8 +4,9 @@
  * overrides can differ from the default teacher.
  */
 import { db } from '../db';
-import { classes, grades, streams, streamSubjects, classSubjects, subjects, people, chapters, classChapters } from '../db/schema';
+import { classes, grades, streams, streamSubjects, classSubjects, subjects, people, chapters, classChapters, classStreams } from '../db/schema';
 import { eq, and, inArray, sql } from 'drizzle-orm';
+import { streamOptions } from './classStreamService';
 export type SetupTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export class SetupError extends Error {
   constructor(message: string, public status = 400) { super(message); }
@@ -25,19 +26,24 @@ export async function syncClassSubjects(tx: SetupTransaction, classId: number) {
     const [stream] = await tx.select().from(streams).where(and(eq(streams.id, cls.streamId), eq(streams.schoolId, grade.schoolId)));
     if (!stream) throw new SetupError('Stream must belong to this school');
   }
-  const desired = cls.streamId ? await tx.select().from(streamSubjects).where(eq(streamSubjects.streamId, cls.streamId)) : [];
+  const configuration=await streamOptions(tx,classId);
+  const desired=configuration.options.flatMap(option=>option.subjects.map(subject=>({subjectId:subject.id})));
+  const uniqueDesired=[...new Map(desired.map(item=>[item.subjectId,item])).values()];
   const wanted = new Set(desired.map(item => item.subjectId));
   const existing = await tx.select().from(classSubjects).where(eq(classSubjects.classId, classId));
   for (const row of existing) {
-    await tx.update(classSubjects).set({ active: wanted.has(row.subjectId) }).where(eq(classSubjects.id, row.id));
+    await tx.update(classSubjects).set({ active: row.academicYear===cls.academicYear && wanted.has(row.subjectId) }).where(eq(classSubjects.id, row.id));
   }
-  for (const item of desired) {
-    let cs = existing.find(row => row.subjectId === item.subjectId);
-    if (!cs) [cs] = await tx.insert(classSubjects).values({ classId, subjectId: item.subjectId }).returning();
+  for (const item of uniqueDesired) {
+    const previous = existing.filter(row=>row.subjectId===item.subjectId&&row.academicYear<cls.academicYear).sort((a,b)=>b.academicYear-a.academicYear)[0];
+    let cs = existing.find(row => row.subjectId === item.subjectId && row.academicYear===cls.academicYear);
+    const newYear = !cs;
+    if (!cs) [cs] = await tx.insert(classSubjects).values({ classId, subjectId: item.subjectId, academicYear:cls.academicYear, personId:previous?.personId??null }).returning();
     const curriculum = await tx.select().from(chapters).where(and(eq(chapters.subjectId, item.subjectId), eq(chapters.gradeNumber, grade.number), eq(chapters.active, true)));
     const linked = await tx.select().from(classChapters).where(eq(classChapters.classSubjectId, cs!.id));
     const missing = curriculum.filter(ch => !linked.some(link => link.chapterId === ch.id));
-    if (missing.length) await tx.insert(classChapters).values(missing.map(ch => ({ classSubjectId: cs!.id, chapterId: ch.id, personId: cs!.personId })));
+    const previousLinks = newYear && previous ? await tx.select().from(classChapters).where(eq(classChapters.classSubjectId,previous.id)) : [];
+    if (missing.length) await tx.insert(classChapters).values(missing.map(ch => ({ classSubjectId: cs!.id, chapterId: ch.id, personId: previousLinks.find(link=>link.chapterId===ch.id)?.personId ?? cs!.personId })));
   }
 }
 
@@ -45,7 +51,8 @@ export async function syncClassSubjects(tx: SetupTransaction, classId: number) {
  * Resynchronize every class using this stream after its subject memberships change.
  */
 export async function syncStreamClasses(tx: SetupTransaction, streamId: number) {
-  const rows = await tx.select({ id: classes.id }).from(classes).where(eq(classes.streamId, streamId)).orderBy(classes.id);
+  const rows=await tx.selectDistinct({id:classes.id}).from(classes).leftJoin(classStreams,eq(classStreams.classId,classes.id)).where(sql`${classes.streamId}=${streamId} or ${classStreams.streamId}=${streamId}`).orderBy(classes.id);
+  for(const row of rows) await tx.update(classes).set({streamRevision:sql`${classes.streamRevision}+1`}).where(eq(classes.id,row.id));
   for (const row of rows) await syncClassSubjects(tx, row.id);
 }
 

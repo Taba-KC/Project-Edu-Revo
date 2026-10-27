@@ -5,11 +5,12 @@ import { learners, schools, classes, grades, classSubjects, subjects, chapters, 
 import type { AuthPayload } from '../middleware/auth';
 import { TeacherError } from './teacherWorkspaceService';
 import { getCurriculum } from './curriculumService';
+import { learnerSubjectIds,streamOptions } from './classStreamService';
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Database = Pick<typeof db, 'transaction'>;
 
 async function learnerScope(tx: Tx, caller: AuthPayload) {
-  const [profile] = await tx.select({ id: learners.id, firstName: learners.firstName, surname: learners.surname, number: learners.admissionNumber, username: learners.username, classId: learners.classId, className: classes.name, gradeNumber: grades.number, schoolName: schools.name })
+  const [profile] = await tx.select({ id: learners.id, firstName: learners.firstName, surname: learners.surname, number: learners.admissionNumber, username: learners.username, classId: classes.id, className: classes.name, gradeNumber: grades.number, schoolName: schools.name })
     .from(learners).innerJoin(classes, eq(classes.id, learners.classId)).innerJoin(grades, eq(grades.id, classes.gradeId)).innerJoin(schools, eq(schools.id, grades.schoolId))
     .where(and(eq(learners.id, caller.accountId), eq(learners.accountSetUp, true), eq(learners.schoolId, caller.schoolId ?? -1), eq(grades.schoolId, caller.schoolId ?? -1)));
   if (caller.accountType !== 'learner' || !profile) throw new TeacherError('Learner library not found.', 404);
@@ -24,9 +25,10 @@ export function answerRelease(activity: { memoReleaseType: string; createdAt: Da
 
 export async function getLearnerWorkspace(caller: AuthPayload, database: Database = db, now = new Date()) {
   return database.transaction(async tx => {
+    const enrolled=await learnerSubjectIds(tx,caller);
     const profile = await learnerScope(tx, caller);
     const allocations = await tx.select({ id: classSubjects.id, subjectId: classSubjects.subjectId, subjectName: subjects.name }).from(classSubjects).innerJoin(subjects, eq(subjects.id, classSubjects.subjectId))
-      .where(and(eq(classSubjects.classId, profile.classId), eq(classSubjects.active, true))).orderBy(subjects.name, classSubjects.id);
+      .where(and(eq(classSubjects.classId, profile.classId), inArray(classSubjects.subjectId,enrolled.length?enrolled:[-1]), eq(classSubjects.active, true))).orderBy(subjects.name, classSubjects.id);
     const result = [];
     for (const allocation of allocations) {
       const curriculum = await getCurriculum(allocation.subjectId, profile.gradeNumber, tx);
@@ -48,7 +50,9 @@ export async function getLearnerWorkspace(caller: AuthPayload, database: Databas
       const activityQuestions = activities.length ? await tx.select({ id: questions.id, homeworkId: questions.homeworkId, body: questions.body, conceptId: questions.conceptId, conceptName: concepts.name, chapterName: chapters.name, topicName: topics.name })
         .from(questions).innerJoin(concepts, eq(concepts.id, questions.conceptId)).innerJoin(topics, eq(topics.id, concepts.topicId)).innerJoin(chapters, eq(chapters.id, concepts.chapterId))
         .where(inArray(questions.homeworkId, activities.map(activity => activity.id))).orderBy(questions.orderIndex, questions.id) : [];
-      result.push({ ...allocation, syllabus: syllabus.map(concept => ({ ...concept, taught: taught.has(concept.id) })),
+      const split=await streamOptions(tx,profile.classId);
+      const attendanceLocation=split.cls.streamConfiguration?.locations.find(location=>location.subjectId===allocation.subjectId)??null;
+      result.push({ ...allocation, attendanceLocation, academicYear:split.cls.academicYear, syllabus: syllabus.map(concept => ({ ...concept, taught: taught.has(concept.id) })),
         lessons: history.filter(lesson => ['planned', 'confirmed'].includes(lesson.status)).map(lesson => ({ id: lesson.id, lessonNumber: lesson.lessonNumber, date: lesson.date, status: lesson.status,
           canRespond: lesson.status === 'confirmed' && !history.some(next => next.lessonNumber > lesson.lessonNumber && next.createdAt >= lesson.createdAt),
           concepts: items.filter(item => item.lessonId === lesson.id).map(item => {
@@ -65,9 +69,10 @@ export async function getLearnerWorkspace(caller: AuthPayload, database: Databas
 
 export async function getLearnerAnswer(caller: AuthPayload, questionId: number, database: Database = db, now = new Date()) {
   return database.transaction(async tx => {
+    const enrolled=await learnerSubjectIds(tx,caller);
     const profile = await learnerScope(tx, caller);
     const [row] = await tx.select({ memo: questions.memo, activity: homework }).from(questions).innerJoin(homework, eq(homework.id, questions.homeworkId)).innerJoin(lessons, eq(lessons.id, homework.lessonId)).innerJoin(classSubjects, eq(classSubjects.id, lessons.classSubjectId))
-      .where(and(eq(questions.id, questionId), eq(classSubjects.classId, profile.classId), eq(classSubjects.active, true), eq(lessons.status, 'confirmed')));
+      .where(and(eq(questions.id, questionId), eq(classSubjects.classId, profile.classId), inArray(classSubjects.subjectId,enrolled.length?enrolled:[-1]), eq(classSubjects.active, true), eq(lessons.status, 'confirmed')));
     if (!row) throw new TeacherError('Question not found.', 404);
     if (!answerRelease(row.activity, now).canReveal) throw new TeacherError('The teacher has not released this answer yet.', 409);
     return { questionId, memo: row.memo };

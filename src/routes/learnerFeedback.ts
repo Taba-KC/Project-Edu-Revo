@@ -14,6 +14,20 @@ import { requireAuth, requireLearner } from '../middleware/auth';
 
 import { getLearnerLessonFeedback, submitLessonFeedback } from '../services/lessonResponseService';
 import { TeacherError } from '../services/teacherWorkspaceService';
+import { db } from '../db';
+import { lessons,classSubjects,learners,lessonConcepts } from '../db/schema';
+import { and,eq,inArray } from 'drizzle-orm';
+import { learnerSubjectIds,StreamChoiceError } from '../services/classStreamService';
+import type { AuthPayload } from '../middleware/auth';
+async function assertPreviewAccess(caller:AuthPayload,lessonId:number,conceptId?:number){
+ await db.transaction(async tx=>{
+  const allowed=await learnerSubjectIds(tx,caller);
+  const [learner]=await tx.select().from(learners).where(eq(learners.id,caller.accountId));
+  const [lesson]=await tx.select({id:lessons.id}).from(lessons).innerJoin(classSubjects,eq(classSubjects.id,lessons.classSubjectId)).where(and(eq(lessons.id,lessonId),eq(classSubjects.classId,learner.classId??-1),eq(classSubjects.active,true),inArray(classSubjects.subjectId,allowed.length?allowed:[-1])));
+  if(!lesson)throw new StreamChoiceError('Lesson not found.',404);
+  if(conceptId){const [concept]=await tx.select().from(lessonConcepts).where(and(eq(lessonConcepts.lessonId,lessonId),eq(lessonConcepts.conceptId,conceptId)));if(!concept)throw new StreamChoiceError('Concept does not belong to this lesson.',404);}
+ });
+}
 const router = Router();
 /**
  * Keep known feedback failures in a consistent HTTP/JSON shape while forwarding unexpected
@@ -40,6 +54,7 @@ const lessonFeedbackSchema = z.object({
  */
 router.get('/lessons/:lessonId/preview', requireAuth, requireLearner, async (req, res) => {
   const lessonId = parseInt(req.params.lessonId as string);
+  await assertPreviewAccess(req.caller!,lessonId);
   const concepts = await getLessonPreview(lessonId);
   return res.json(concepts);
 });
@@ -54,6 +69,7 @@ router.post('/lessons/:lessonId/preview-feedback', requireAuth, requireLearner, 
 
   const result = previewFeedbackSchema.safeParse(req.body);
   if (!result.success) return res.status(400).json({ error: result.error.flatten() });
+  await assertPreviewAccess(req.caller!,lessonId,result.data.conceptId);
 
   const feedback = await upsertPreviewFeedback({ ...result.data, lessonId, learnerId });
   return res.status(200).json(feedback);

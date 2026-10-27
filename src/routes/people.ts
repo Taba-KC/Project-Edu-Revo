@@ -13,8 +13,10 @@ import {
   completePeopleOnboarding,
 } from '../services/peopleService';
 import bcrypt from 'bcrypt';
-import { requireAuth, requirePrincipal } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 
+import { requireSchoolAdministration } from "../middleware/schoolAdministration";
+const requireSchoolAdmin = requireSchoolAdministration(["staff"],["staff", "grades"]);
 const router = Router();
 
 const addPersonSchema = z.object({
@@ -36,7 +38,7 @@ const onboardingSchema = z.object({
 /**
  * POST /schools/:schoolId/people: Create data or run the submitted operation.
  */
-router.post('/schools/:schoolId/people', requireAuth, requirePrincipal, async (req, res) => {
+router.post('/schools/:schoolId/people', requireAuth, requireSchoolAdmin, async (req, res) => {
   const schoolId = parseInt(req.params.schoolId as string);
   const school = await getSchoolById(schoolId);
   if (!school) return res.status(404).json({ error: 'School not found' });
@@ -52,7 +54,7 @@ router.post('/schools/:schoolId/people', requireAuth, requirePrincipal, async (r
 /**
  * GET /schools/:schoolId/people: Read/return data.
  */
-router.get('/schools/:schoolId/people', requireAuth, requirePrincipal, async (req, res) => {
+router.get('/schools/:schoolId/people', requireAuth, requireSchoolAdmin, async (req, res) => {
   const schoolId = parseInt(req.params.schoolId as string);
   const school = await getSchoolById(schoolId);
   if (!school) return res.status(404).json({ error: 'School not found' });

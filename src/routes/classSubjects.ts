@@ -8,11 +8,13 @@ import { z } from 'zod';
 import { db } from '../db';
 import { classes, grades } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
-import { requireAuth, requirePrincipal } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 import { getClassSubjects, assignSubjectTeacher, SetupError } from '../services/classSubjectService';
 import { getClassCurriculum } from '../services/classCurriculumService';
+import { requireSchoolAdministration } from "../middleware/schoolAdministration";
+const requireSchoolAdmin = requireSchoolAdministration(["grades"],["grades", "curriculum"]);
 const router = Router();
-router.use('/schools/:schoolId/classes/:classId/subjects', requireAuth, requirePrincipal, async (req, res, next) => {
+router.use('/schools/:schoolId/classes/:classId/subjects', requireAuth, requireSchoolAdmin, async (req, res, next) => {
   const schoolId = Number(req.params.schoolId), classId = Number(req.params.classId);
   if (!Number.isSafeInteger(schoolId) || schoolId <= 0 || !Number.isSafeInteger(classId) || classId <= 0) return res.status(400).json({ error: 'Invalid ID' });
   if (req.caller?.schoolId !== schoolId) return res.status(403).json({ error: 'School access denied' });

@@ -4,9 +4,10 @@
  * transaction.
  */
 import { db, pool } from '../db';
-import { classes, grades, learners, people, streams } from '../db/schema';
+import { classes, grades, learners, people, streams, classStreams } from '../db/schema';
 import { eq, and, count, sql } from 'drizzle-orm';
 import type { PoolClient } from 'pg';
+import { saveClassStreams } from './classStreamService';
 import { syncClassSubjects } from './classSubjectService';
 
 export interface ClassInput {
@@ -89,6 +90,8 @@ export async function getClassesByGrade(gradeId: number) {
   return db
     .select({
       id: classes.id,
+      academicYear:classes.academicYear,
+      streamIds:sql<number[]>`ARRAY(SELECT stream_id FROM class_streams WHERE class_id=${classes.id} ORDER BY stream_id)`,
       gradeId: classes.gradeId,
       streamId: classes.streamId,
       classTeacherId: classes.classTeacherId,
@@ -106,6 +109,7 @@ export async function getClassesByGrade(gradeId: number) {
     .where(eq(classes.gradeId, gradeId))
     .groupBy(
       classes.id,
+      classes.academicYear,
       classes.gradeId,
       classes.streamId,
       classes.classTeacherId,
@@ -127,7 +131,8 @@ export async function assignStreamToClass(classId: number, streamId: number) {
   return db.transaction(async tx => {
     await tx.execute(sql`select pg_advisory_xact_lock(7411, 0)`);
     await tx.select({ id: streams.id }).from(streams).where(eq(streams.id, streamId)).for('update');
-    await tx.update(classes).set({ streamId }).where(eq(classes.id, classId));
+    const [target]=await tx.select({schoolId:grades.schoolId}).from(classes).innerJoin(grades,eq(grades.id,classes.gradeId)).where(eq(classes.id,classId));
+    await saveClassStreams(tx,classId,target.schoolId,[streamId],null);
     await syncClassSubjects(tx, classId);
     return tx.select().from(classes).where(eq(classes.id, classId));
   });
@@ -154,7 +159,11 @@ export async function updateClass(classId: number, data: ClassUpdateInput) {
     if (data.streamId) await tx.select({ id: streams.id }).from(streams).where(eq(streams.id, data.streamId)).for('update');
     const [updated] = await tx.update(classes).set(updates).where(eq(classes.id, classId)).returning();
     if (!updated) throw new Error('Class not found');
-    if (data.streamId !== undefined) await syncClassSubjects(tx, classId);
+    if (data.streamId !== undefined) {
+      if(data.streamId){const [grade]=await tx.select().from(grades).where(eq(grades.id,existing.gradeId));await saveClassStreams(tx,classId,grade.schoolId,[data.streamId],null);}
+      else {await tx.delete(classStreams).where(eq(classStreams.classId,classId));await tx.update(classes).set({streamConfiguration:null,streamRevision:sql`${classes.streamRevision}+1`}).where(eq(classes.id,classId));}
+      await syncClassSubjects(tx,classId);
+    }
     return updated;
   });
 }

@@ -2,12 +2,16 @@
  * Named classes within a school grade, with stream and class-manager relationships. A class
  * ID stays stable when its visible name is changed.
  */
-import { pgTable, serial, integer, text, timestamp, unique } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { pgTable, serial, integer, text, timestamp, unique, jsonb } from 'drizzle-orm/pg-core';
 import { grades } from './grades';
 import { streams } from './streams';
 import { people } from './people';
 
 export const classes = pgTable('classes', {
+  academicYear: integer('academic_year').notNull().default(sql`EXTRACT(YEAR FROM CURRENT_DATE)::integer`),
+  streamRevision: integer('stream_revision').notNull().default(0),
+  streamConfiguration: jsonb('stream_configuration').$type<{ primarySubjectId: number; locations: { subjectId: number; building: string; classroom: string }[] }>(),
   id:              serial('id').primaryKey(),
   gradeId:         integer('grade_id').notNull().references(() => grades.id),
   streamId:        integer('stream_id').references(() => streams.id),

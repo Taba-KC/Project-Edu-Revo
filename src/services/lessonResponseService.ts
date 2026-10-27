@@ -3,12 +3,13 @@
  * lesson's class, stop responses when a later lesson exists, and update the learner's
  * existing concept response rather than adding duplicates.
  */
-import { and, eq, gt, gte, sql } from 'drizzle-orm';
+import { and, eq, gt, gte, sql, inArray } from 'drizzle-orm';
 import { db } from '../db';
 import { learners, classes, grades, classSubjects, lessons, lessonConcepts, lessonFeedback, concepts, topics, chapters } from '../db/schema';
 import type { AuthPayload } from '../middleware/auth';
 import { TeacherError } from './teacherWorkspaceService';
 
+import { learnerSubjectIds } from './classStreamService';
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Database = Pick<typeof db, 'transaction'>;
 export type LessonReaction = 'understood' | 'didnt_understand';
@@ -18,10 +19,11 @@ export type LessonReaction = 'understood' | 'didnt_understand';
  * confirmed. A newer lesson closes the response window.
  */
 async function learnerLesson(tx: Tx, caller: AuthPayload, lessonId: number) {
+  const enrolled=await learnerSubjectIds(tx,caller);
   const [lesson] = await tx.select({ id: lessons.id, status: lessons.status, createdAt: lessons.createdAt, lessonNumber: lessons.lessonNumber, classSubjectId: lessons.classSubjectId }).from(lessons)
     .innerJoin(classSubjects, eq(classSubjects.id, lessons.classSubjectId)).innerJoin(classes, eq(classes.id, classSubjects.classId)).innerJoin(grades, eq(grades.id, classes.gradeId))
     .innerJoin(learners, eq(learners.classId, classes.id))
-    .where(and(eq(lessons.id, lessonId), eq(classSubjects.active, true), eq(learners.id, caller.accountId), eq(learners.accountSetUp, true), eq(learners.schoolId, caller.schoolId ?? -1), eq(grades.schoolId, caller.schoolId ?? -1)));
+    .where(and(eq(lessons.id, lessonId), inArray(classSubjects.subjectId,enrolled.length?enrolled:[-1]), eq(classSubjects.active, true), eq(learners.id, caller.accountId), eq(learners.accountSetUp, true), eq(learners.schoolId, caller.schoolId ?? -1), eq(grades.schoolId, caller.schoolId ?? -1)));
   if (caller.accountType !== 'learner' || !lesson || lesson.status !== 'confirmed') throw new TeacherError('Confirmed lesson not found.', 404);
   const [next] = await tx.select({ id: lessons.id }).from(lessons).where(and(eq(lessons.classSubjectId, lesson.classSubjectId), gt(lessons.lessonNumber, lesson.lessonNumber), gte(lessons.createdAt, lesson.createdAt))).limit(1);
   return { ...lesson, canRespond: !next };

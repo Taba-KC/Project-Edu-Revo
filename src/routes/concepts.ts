@@ -8,6 +8,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { createConcept, getConceptsByChapter } from '../services/conceptService';
 import { requireAuth, requirePrincipal } from '../middleware/auth';
+import { requireCurriculumReader } from '../middleware/schoolAdministration';
 
 const router = Router();
 
@@ -35,7 +36,7 @@ router.post('/chapters/:chapterId/concepts', requireAuth, requirePrincipal, asyn
 /**
  * GET /chapters/:chapterId/concepts: Read/return data.
  */
-router.get('/chapters/:chapterId/concepts', requireAuth, requirePrincipal, async (req, res) => {
+router.get('/chapters/:chapterId/concepts', requireAuth, requireCurriculumReader, async (req, res) => {
   const chapterId = parseInt(req.params.chapterId as string);
   const conceptList = await getConceptsByChapter(chapterId);
   return res.json(conceptList);

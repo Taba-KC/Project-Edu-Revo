@@ -37,6 +37,7 @@ export async function getPeopleBySchool(schoolId: number) {
       username: people.username,
       accountSetUp: people.accountSetUp,
       createdAt: people.createdAt,
+      administrativeWork:sql<string[]>`ARRAY(select capability from administrative_work aw where aw.person_id=${people.id})`,
       assignedChapterCount: sql<number>`count(${classChapters.id}) filter (where ${classSubjects.active} = true and ${chapters.active} = true)::int`,
       assignedSubjectCount: sql<number>`(select count(*)::int from class_subjects cs where cs.person_id = ${people.id} and cs.active = true)`,
     })

@@ -4,6 +4,7 @@
  * no automatic /api prefix. server.ts starts listening separately.
  */
 import express from 'express';
+import { StreamChoiceError } from './services/classStreamService';
 import cors from 'cors';
 import path from 'path';
 import { requestLogger } from './middleware/logger';
@@ -33,6 +34,8 @@ import teacherWorkspaceRouter from './routes/teacherWorkspace';
 
 import learnerWorkspaceRouter from './routes/learnerWorkspace';
 
+import classStreamsRouter from './routes/classStreams';
+import staffAccessRouter from './routes/staffAccess';
 const app = express();
 
 /**
@@ -56,6 +59,8 @@ app.use(requestLogger);
  */
 app.use(authRouter);
 app.use(managerRouter);
+app.use(staffAccessRouter);
+app.use(classStreamsRouter);
 app.use(dashboardsRouter);
 app.use(teacherWorkspaceRouter);
 app.use(learnerWorkspaceRouter);
@@ -78,4 +83,5 @@ app.use(learnerFeedbackRouter);
 app.use(chapterImportRouter);
 app.use(announcementsRouter);
 
+app.use((error:unknown,_req:express.Request,res:express.Response,next:express.NextFunction)=>{if(error instanceof StreamChoiceError)return void res.status(error.status).json({error:error.message});next(error);});
 export default app;
