@@ -19,7 +19,7 @@ export async function getClassCurriculum(schoolId: number, classId: number, clas
     const [allocation] = await tx.select({ subjectId: subjects.id, subjectName: subjects.name, gradeNumber: grades.number, className: classes.name })
       .from(classSubjects).innerJoin(subjects, eq(subjects.id, classSubjects.subjectId))
       .innerJoin(classes, eq(classes.id, classSubjects.classId)).innerJoin(grades, eq(grades.id, classes.gradeId))
-      .where(and(eq(grades.schoolId, schoolId), eq(classes.id, classId), eq(classSubjects.id, classSubjectId), eq(classSubjects.active, true)));
+      .where(and(eq(grades.schoolId, schoolId), eq(classes.id, classId), eq(classSubjects.id, classSubjectId), eq(classSubjects.active, true), eq(classSubjects.academicYear, classes.academicYear)));
     if (!allocation) throw new SetupError('Active class subject not found', 404);
     const curriculum = await getCurriculum(allocation.subjectId, allocation.gradeNumber, tx);
     const confirmed = await tx.selectDistinct({ conceptId: lessonConcepts.conceptId })

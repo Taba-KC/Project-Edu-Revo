@@ -1,6 +1,6 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { classes, grades, streams, streamSubjects, subjects, classStreams, learners, learnerStreamSelections, classSubjects } from '../db/schema';
+import { classes, grades, streams, streamSubjects, subjects, classStreams, learners, learnerStreamSelections, classSubjects, lessons } from '../db/schema';
 import type { AuthPayload } from '../middleware/auth';
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export class StreamChoiceError extends Error { constructor(message: string, public status = 400) { super(message); } }
@@ -65,8 +65,18 @@ export async function subjectRoster(tx: Tx, classSubjectId: number) {
   const [allocation] = await tx.select().from(classSubjects).where(eq(classSubjects.id, classSubjectId));
   if (!allocation) return [];
   const info = await streamOptions(tx, allocation.classId);
+  if (!allocation.active || allocation.academicYear !== info.cls.academicYear) return [];
   const roster = await tx.select({ id: learners.id }).from(learners).where(eq(learners.classId, allocation.classId));
   if (!info.split || info.common.some(subject => subject.id === allocation.subjectId)) return roster;
   const choices = await tx.select().from(learnerStreamSelections).where(and(eq(learnerStreamSelections.classId, allocation.classId), eq(learnerStreamSelections.academicYear, allocation.academicYear), eq(learnerStreamSelections.revision, info.cls.streamRevision)));
   return roster.filter(learner => choices.some(choice => choice.learnerId === learner.id && info.options.some(option => option.id === choice.streamId && option.subjects.some(subject => subject.id === allocation.subjectId))));
+}
+
+/** A taught lesson keeps its original audience when learners transfer or streams change.
+ * Null is reserved for legacy/imported records lacking a confirmation snapshot. */
+export async function lessonRoster(tx: Tx, lessonId: number) {
+  const [lesson] = await tx.select().from(lessons).where(eq(lessons.id, lessonId));
+  if (!lesson) return [];
+  if (lesson.learnerIdsSnapshot !== null) return lesson.learnerIdsSnapshot.map(id => ({ id }));
+  return subjectRoster(tx, lesson.classSubjectId);
 }

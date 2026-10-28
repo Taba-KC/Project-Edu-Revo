@@ -31,7 +31,7 @@ export async function getDashboard(role: DashboardRole, accountId: number, schoo
     if (role === 'learner' && !learnerClass) throw new DashboardError('Your class could not be found. Contact your school administrator.');
     const allocations = await tx.select({ id: classSubjects.id, subjectId: subjects.id, subjectName: subjects.name, classId: classes.id, className: classes.name, gradeId: grades.id, gradeNumber: grades.number, streamId: classes.streamId, personId: classSubjects.personId })
       .from(classSubjects).innerJoin(subjects, eq(subjects.id, classSubjects.subjectId)).innerJoin(classes, eq(classes.id, classSubjects.classId)).innerJoin(grades, eq(grades.id, classes.gradeId))
-      .where(and(eq(grades.schoolId, schoolId), eq(classSubjects.active, true), ...(role === 'learner' ? [eq(classes.id, learnerClass!.id),inArray(classSubjects.subjectId,enrolled.length?enrolled:[-1])] : [])))
+      .where(and(eq(grades.schoolId, schoolId), eq(classSubjects.active, true), eq(classSubjects.academicYear, classes.academicYear), ...(role === 'learner' ? [eq(classes.id, learnerClass!.id),inArray(classSubjects.subjectId,enrolled.length?enrolled:[-1])] : [])))
       .orderBy(subjects.name, grades.number, classes.name);
     const links = allocations.length ? await tx.select({ classSubjectId: classChapters.classSubjectId, chapterId: chapters.id, subjectId: chapters.subjectId, gradeNumber: chapters.gradeNumber, personId: classChapters.personId }).from(classChapters)
       .innerJoin(chapters, eq(chapters.id, classChapters.chapterId)).where(and(inArray(classChapters.classSubjectId, allocations.map(row => row.id)), eq(chapters.active, true))) : [];

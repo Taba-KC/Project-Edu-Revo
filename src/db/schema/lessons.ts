@@ -2,7 +2,7 @@
  * A lesson for a class-subject allocation, with planned/confirmed status and a permanent
  * lessonNumber. Sidebar page numbering is unrelated to this saved lesson sequence.
  */
-import { pgTable, serial, integer, text, date, timestamp, unique } from 'drizzle-orm/pg-core';
+import { pgTable, serial, integer, text, date, timestamp, unique, jsonb } from 'drizzle-orm/pg-core';
 import { chapters } from './chapters';
 import { classSubjects } from './classSubjects';
 
@@ -13,6 +13,7 @@ export const lessons = pgTable('lessons', {
   chapterId:      integer('chapter_id').notNull().references(() => chapters.id),
   classSubjectId: integer('class_subject_id').notNull().references(() => classSubjects.id),
   date:           date('date').notNull(),
+  learnerIdsSnapshot: jsonb('learner_ids_snapshot').$type<number[] | null>(),
   status:         text('status').notNull().default('planned'),
   createdAt:      timestamp('created_at').defaultNow().notNull(),
 }, table => [unique('lessons_class_subject_number_unique').on(table.classSubjectId, table.lessonNumber)]);

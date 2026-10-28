@@ -4,7 +4,7 @@
  * overrides can differ from the default teacher.
  */
 import { db } from '../db';
-import { classes, grades, streams, streamSubjects, classSubjects, subjects, people, chapters, classChapters, classStreams } from '../db/schema';
+import { classes, grades, streams, streamSubjects, classSubjects, subjects, people, chapters, classChapters, classStreams, lessonReviewConcepts, concepts } from '../db/schema';
 import { eq, and, inArray, sql } from 'drizzle-orm';
 import { streamOptions } from './classStreamService';
 export type SetupTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -88,4 +88,17 @@ export async function assignSubjectTeacher(tx: SetupTransaction, schoolId: numbe
   // Keep chapter-specific overrides; update chapters using the previous default.
   await tx.update(classChapters).set({ personId }).where(and(eq(classChapters.classSubjectId, classSubjectId),
     sql`(${classChapters.personId} IS NULL OR ${classChapters.personId} IS NOT DISTINCT FROM ${row.cs.personId})`));
+  // A pending correction belongs to the class's work. Hand it to the replacement teacher
+  // only for chapters they now own; explicit chapter overrides keep their own drafts.
+  if (personId !== null) {
+    const owned = await tx.select({ conceptId: concepts.id }).from(concepts).innerJoin(classChapters, eq(classChapters.chapterId, concepts.chapterId)).where(and(eq(classChapters.classSubjectId, classSubjectId), eq(classChapters.personId, personId)));
+    const pending = owned.length ? await tx.select().from(lessonReviewConcepts).where(and(eq(lessonReviewConcepts.classSubjectId, classSubjectId), sql`${lessonReviewConcepts.personId} <> ${personId}`, inArray(lessonReviewConcepts.conceptId, owned.map(item => item.conceptId)))) : [];
+    for (const draft of pending) {
+      const [existing] = await tx.select().from(lessonReviewConcepts).where(and(eq(lessonReviewConcepts.classSubjectId, classSubjectId), eq(lessonReviewConcepts.personId, personId), eq(lessonReviewConcepts.conceptId, draft.conceptId)));
+      const reviewGoals = [...new Set([...(existing?.reviewGoals ?? []), ...draft.reviewGoals])].slice(0,5);
+      await tx.insert(lessonReviewConcepts).values({ classSubjectId, personId, conceptId: draft.conceptId, reviewGoals }).onConflictDoUpdate({ target: [lessonReviewConcepts.classSubjectId,lessonReviewConcepts.personId,lessonReviewConcepts.conceptId], set: { reviewGoals } });
+      await tx.delete(lessonReviewConcepts).where(eq(lessonReviewConcepts.id, draft.id));
+    }
+  }
+
 }

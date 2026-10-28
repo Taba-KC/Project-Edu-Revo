@@ -1,3 +1,4 @@
+import { learnerClassHistory } from '../db/schema';
 /**
  * Spreadsheet preview and atomic account import. Normalize numbers, report row errors,
  * verify target school/class and recheck duplicates during Save because another request may
@@ -100,13 +101,18 @@ export async function saveRoster(schoolId: number, kind: RosterKind, rows: Roste
   const result = rosterRowsSchema.safeParse({ rows });
   if (!result.success) throw new RosterImportError('Use 1–500 rows, with text fields up to 200 characters.');
   return database.transaction(async tx => {
+    await tx.execute(sql`select pg_advisory_xact_lock(7411, 0)`);
     await tx.execute(sql`select pg_advisory_xact_lock(7412, ${schoolId})`);
     await checkTarget(tx, schoolId, kind, classId);
     const clean = result.data.rows.map(row => ({ ...(kind === 'staff' ? { title: (row.title ?? '').trim() } : {}), firstName: row.firstName.trim(), surname: row.surname.trim(), identifier: row.identifier.trim() }));
     const issues = validateRosterRows(clean, await existingNumbers(tx, schoolId, kind), kind);
     if (issues.length) throw new RosterImportError('Nothing saved. ' + issues.slice(0, 5).map(issue => 'Row ' + issue.row + ': ' + issue.errors.join('; ')).join('. '));
     if (kind === 'staff') await tx.insert(people).values(clean.map(({ identifier, ...row }) => ({ ...row, title: row.title!, schoolId, staffNumber: identifier })));
-    else await tx.insert(learners).values(clean.map(({ identifier, ...row }) => ({ ...row, schoolId, classId: classId!, admissionNumber: identifier })));
+    else {
+      const [target] = await tx.select().from(classes).where(eq(classes.id, classId!));
+      const created = await tx.insert(learners).values(clean.map(({ identifier, ...row }) => ({ ...row, schoolId, classId: classId!, admissionNumber: identifier }))).returning({ id: learners.id });
+      await tx.insert(learnerClassHistory).values(created.map(row => ({ learnerId: row.id, classId: classId!, academicYear: target!.academicYear })));
+    }
     return { saved: clean.length };
   });
 }

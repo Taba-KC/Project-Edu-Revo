@@ -1,3 +1,4 @@
+import { ClassHistoryError } from '../services/classService';
 /**
  * HTTP routing for this feature. Principal class management, including parent school/grade
  * validation and request input checks. req.params contains URL IDs, req.body contains
@@ -218,6 +219,7 @@ router.delete('/schools/:schoolId/grades/:gradeId/classes/:classId', requireAuth
     const deleted = await deleteClassById(classId, gradeId, schoolId);
     res.json(deleted);
   } catch (err) {
+    if (err instanceof ClassHistoryError) return void res.status(409).json({ error: err.message });
     if (err instanceof ClassNotFoundError) {
       res.status(404).json({ error: err.message });
       return;

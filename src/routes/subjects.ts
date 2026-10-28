@@ -1,3 +1,5 @@
+import { requireAuth } from '../middleware/auth';
+import { requireAppManager } from '../middleware/appManager';
 /**
  * HTTP routing for this feature. Shared subject catalogue endpoints. req.params contains URL
  * IDs, req.body contains submitted JSON, and res.json sends the response. Read each
@@ -16,7 +18,7 @@ const createSubjectSchema = z.object({
 /**
  * POST /subjects: Create data or run the submitted operation.
  */
-router.post('/subjects', async (req: Request, res: Response) => {
+router.post('/subjects', requireAuth, requireAppManager, async (req: Request, res: Response) => {
   const result = createSubjectSchema.safeParse(req.body);
   if (!result.success) {
     res.status(400).json({ error: result.error.flatten() });

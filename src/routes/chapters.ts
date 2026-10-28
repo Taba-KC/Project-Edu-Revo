@@ -1,3 +1,8 @@
+import { requireAppManager } from '../middleware/appManager';
+import { SetupError } from '../services/classSubjectService';
+import { db } from '../db';
+import { classSubjects, classes, grades } from '../db/schema';
+import { and, eq } from 'drizzle-orm';
 /**
  * HTTP routing for this feature. Chapter lookup/creation and class-chapter teacher
  * assignment endpoints. req.params contains URL IDs, req.body contains submitted JSON, and
@@ -16,6 +21,12 @@ import { requireAuth, requirePrincipal } from '../middleware/auth';
 import { requireCurriculumReader } from '../middleware/schoolAdministration';
 
 const router = Router();
+// Legacy chapter routes must not allow a principal to reach another school's allocation.
+router.use('/class-subjects/:classSubjectId/chapters', requireAuth, requirePrincipal, async (req, res, next) => {
+  const [allocation] = await db.select({ id: classSubjects.id }).from(classSubjects).innerJoin(classes, eq(classes.id, classSubjects.classId)).innerJoin(grades, eq(grades.id, classes.gradeId)).where(and(eq(classSubjects.id, Number(req.params.classSubjectId)), eq(grades.schoolId, req.caller!.schoolId ?? -1), eq(classSubjects.active, true), eq(classSubjects.academicYear, classes.academicYear)));
+  if (!allocation) return void res.status(404).json({ error: 'Current class subject not found in your school.' });
+  next();
+});
 
 const createChapterSchema = z.object({
   name:       z.string().min(1),
@@ -35,7 +46,7 @@ const assignPersonSchema = z.object({
  * POST /subjects/:subjectId/grades/:gradeNumber/chapters: Create data or run the submitted
  * operation.
  */
-router.post('/subjects/:subjectId/grades/:gradeNumber/chapters', requireAuth, requirePrincipal, async (req, res) => {
+router.post('/subjects/:subjectId/grades/:gradeNumber/chapters', requireAuth, requireAppManager, async (req, res) => {
   const subjectId   = parseInt(req.params.subjectId as string);
   const gradeNumber = parseInt(req.params.gradeNumber as string);
 
@@ -100,4 +111,5 @@ router.get('/class-subjects/:classSubjectId/chapters', requireAuth, requirePrinc
   return res.json(classChapterList);
 });
 
+router.use((error: unknown, _req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) => { if (error instanceof SetupError) return void res.status(error.status).json({ error: error.message }); next(error); });
 export default router;

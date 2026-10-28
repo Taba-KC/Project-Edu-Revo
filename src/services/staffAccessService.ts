@@ -9,7 +9,7 @@ export async function staffAccess(caller: AuthPayload) {
   const [person] = await db.select().from(people).where(and(eq(people.id, caller.accountId), eq(people.schoolId, caller.schoolId ?? -1)));
   if (caller.accountType !== 'person' || !person?.accountSetUp || !['principal', 'teacher'].includes(person.role)) throw new AccessError('School staff access required.');
   const grants = await db.select().from(administrativeWork).where(and(eq(administrativeWork.personId, person.id), eq(administrativeWork.schoolId, person.schoolId)));
-  const allocations = await db.select({ id: classSubjects.id, personId: classSubjects.personId }).from(classSubjects).innerJoin(classes, eq(classes.id, classSubjects.classId)).innerJoin(grades, eq(grades.id, classes.gradeId)).where(and(eq(grades.schoolId, person.schoolId), eq(classSubjects.active, true)));
+  const allocations = await db.select({ id: classSubjects.id, personId: classSubjects.personId }).from(classSubjects).innerJoin(classes, eq(classes.id, classSubjects.classId)).innerJoin(grades, eq(grades.id, classes.gradeId)).where(and(eq(grades.schoolId, person.schoolId), eq(classSubjects.active, true), eq(classSubjects.academicYear, classes.academicYear)));
   const chapterAssignments = allocations.length ? await db.select().from(classChapters).innerJoin(chapters,eq(chapters.id,classChapters.chapterId)).where(and(eq(chapters.active,true),eq(classChapters.personId, person.id), inArray(classChapters.classSubjectId, allocations.map(row => row.id)))) : [];
   return {
     isPrincipal: person.role === 'principal', canTeach: allocations.some(row => row.personId === person.id) || chapterAssignments.length > 0,

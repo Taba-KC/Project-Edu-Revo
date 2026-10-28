@@ -1,3 +1,5 @@
+import { frontendOrigins } from './securityConfig';
+import { attemptLimit } from './middleware/authRateLimit';
 /**
  * Build the Express application: shared middleware runs first, then mounted routers match
  * HTTP methods and paths. Router files define full endpoint paths in this project; there is
@@ -36,13 +38,17 @@ import learnerWorkspaceRouter from './routes/learnerWorkspace';
 
 import classStreamsRouter from './routes/classStreams';
 import staffAccessRouter from './routes/staffAccess';
+import learnerTransfersRouter from './routes/learnerTransfers';
 const app = express();
 
 /**
  * Allow requests from the development frontend origin. CORS controls browser access; it is
  * not account authorization.
  */
-app.use(cors({ origin: 'http://localhost:3001', credentials: true }));
+if (process.env.TRUST_PROXY_HOPS) app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS));
+const allowedOrigins=frontendOrigins();
+app.use(cors({origin:allowedOrigins,credentials:true}));
+app.use((_req,res,next)=>{res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('X-Frame-Options','DENY');res.setHeader('Cache-Control','no-store');next();});
 /**
  * Parse JSON request bodies before route handlers read req.body, with a size limit.
  */
@@ -57,9 +63,14 @@ app.use(requestLogger);
  * Mount routers after shared middleware. Creating a routes file alone does not make its
  * endpoints reachable.
  */
+// Rate limits count unsuccessful and successful requests, including malformed credentials.
+app.use(['/auth/people/login','/auth/learners/login','/auth/managers/login'],attemptLimit('login-ip',300,900));
+app.use('/auth/refresh',attemptLimit('refresh-ip',600,900));
+app.use(['/people/onboarding','/learners/onboarding','/schools/activate'],attemptLimit('claim-ip',300,900));
 app.use(authRouter);
 app.use(managerRouter);
 app.use(staffAccessRouter);
+app.use(learnerTransfersRouter);
 app.use(classStreamsRouter);
 app.use(dashboardsRouter);
 app.use(teacherWorkspaceRouter);

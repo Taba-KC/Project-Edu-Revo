@@ -1,3 +1,4 @@
+import { requireAppManager } from '../middleware/appManager';
 /**
  * HTTP routing for this feature. Upload and parse an older chapter spreadsheet format
  * through the chapter import service. req.params contains URL IDs, req.body contains
@@ -8,10 +9,10 @@ import { Router } from 'express';
 import multer from 'multer';
 import * as XLSX from 'xlsx';
 import { bulkImportChapters } from '../services/chapterImportService';
-import { requireAuth, requireDeveloper } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024, files: 1, fields: 0 } });
 
 /**
  * POST /subjects/:subjectId/grades/:gradeNumber/chapters/import: Create data or run the
@@ -20,7 +21,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 router.post(
   '/subjects/:subjectId/grades/:gradeNumber/chapters/import',
   requireAuth,
-  requireDeveloper,
+  requireAppManager,
   upload.single('file'),
   async (req, res) => {
     const subjectId   = parseInt(req.params.subjectId as string);

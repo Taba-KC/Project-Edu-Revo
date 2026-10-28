@@ -1,3 +1,5 @@
+import { requireAuth } from '../middleware/auth';
+import { requireAppManager } from '../middleware/appManager';
 /**
  * HTTP routing for this feature. School registration, lookup and activation endpoints.
  * req.params contains URL IDs, req.body contains submitted JSON, and res.json sends the
@@ -13,6 +15,10 @@ import {
 } from '../services/schoolService';
 
 const router = Router();
+function publicSchool(school: NonNullable<Awaited<ReturnType<typeof getSchoolById>>>) {
+ const { id, circuitId, name, code, activatedAt, createdAt }=school;
+ return { id, circuitId, name, code, activatedAt, createdAt };
+}
 
 const seedSchoolSchema = z.object({
   circuitId:      z.number().int().positive(),
@@ -29,7 +35,7 @@ const activateSchoolSchema = z.object({
 /**
  * POST /schools/seed: Create data or run the submitted operation.
  */
-router.post('/schools/seed', async (req: Request, res: Response) => {
+router.post('/schools/seed', requireAuth, requireAppManager, async (req: Request, res: Response) => {
   const result = seedSchoolSchema.safeParse(req.body);
   if (!result.success) {
     res.status(400).json({ error: result.error.flatten() });
@@ -56,7 +62,7 @@ router.post('/schools/activate', async (req: Request, res: Response) => {
     return;
   }
 
-  res.json(school);
+  res.json(publicSchool(school));
 });
 
 /**
@@ -64,7 +70,7 @@ router.post('/schools/activate', async (req: Request, res: Response) => {
  */
 router.get('/schools', async (_req: Request, res: Response) => {
   const schools = await getAllSchools();
-  res.json(schools);
+  res.json(schools.map(publicSchool));
 });
 
 /**
@@ -83,7 +89,7 @@ router.get('/schools/:id', async (req: Request, res: Response) => {
     return;
   }
 
-  res.json(school);
+  res.json(publicSchool(school));
 });
 
 export default router;

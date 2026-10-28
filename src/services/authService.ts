@@ -44,7 +44,7 @@ async function storeRefreshToken(rawToken: string, accountId: number, accountTyp
  */
 export async function loginPerson(username: string, password: string) {
   const [person] = await db.select().from(people).where(eq(people.username, username));
-  if (!person || !person.passwordHash) throw new Error('Invalid credentials');
+  if (!person?.accountSetUp || !person.passwordHash) throw new Error('Invalid credentials');
   const valid = await bcrypt.compare(password, person.passwordHash);
   if (!valid) throw new Error('Invalid credentials');
   const accessToken = generateAccessToken(person.id, 'person', person.schoolId, person.role);
@@ -58,7 +58,7 @@ export async function loginPerson(username: string, password: string) {
  */
 export async function loginLearner(username: string, password: string) {
   const [learner] = await db.select().from(learners).where(eq(learners.username, username));
-  if (!learner || !learner.passwordHash) throw new Error('Invalid credentials');
+  if (!learner?.accountSetUp || !learner.passwordHash) throw new Error('Invalid credentials');
 
   const valid = await bcrypt.compare(password, learner.passwordHash);
   if (!valid) throw new Error('Invalid credentials');
@@ -91,11 +91,16 @@ export async function refreshAccessToken(rawToken: string) {
   }
   if (stored.accountType === 'person') {
     const [person] = await db.select().from(people).where(eq(people.id, stored.accountId));
-    if (!person) throw new Error('Account not found');
+    if (!person?.accountSetUp || person.schoolId!==stored.schoolId) throw new Error('Account not found');
     return generateAccessToken(stored.accountId, stored.accountType, stored.schoolId, person.role);
   }
 
-  return generateAccessToken(stored.accountId, stored.accountType, stored.schoolId);
+  if (stored.accountType === 'learner') {
+    const [learner]=await db.select().from(learners).where(eq(learners.id,stored.accountId));
+    if(!learner?.accountSetUp || learner.schoolId!==stored.schoolId)throw new Error('Account not found');
+    return generateAccessToken(learner.id,'learner',learner.schoolId);
+  }
+  throw new Error('Unsupported account');
 }
 
 /**

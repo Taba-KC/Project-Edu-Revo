@@ -52,8 +52,14 @@ router.post('/schools/:schoolId/learners', requireAuth, requireSchoolAdmin, asyn
   const [target]=await db.select({id:classes.id}).from(classes).innerJoin(grades,eq(grades.id,classes.gradeId)).where(and(eq(classes.id,result.data.classId),eq(grades.schoolId,schoolId)));
   if(!target)return res.status(404).json({error:'Class not found in this school.'});
 
-  const learner = await addLearner({ ...result.data, schoolId });
-  return res.status(201).json(learner);
+  try {
+    const learner = await addLearner({ ...result.data, schoolId });
+    return res.status(201).json(learner);
+  } catch (error) {
+    const failure = error as { code?: string; cause?: { code?: string } };
+    if (failure.code === '23505' || failure.cause?.code === '23505') return res.status(409).json({ error: 'This admission number already exists in your school. Use a reviewed class register update to transfer the learner.' });
+    throw error;
+  }
 });
 
 // List all learners in a class

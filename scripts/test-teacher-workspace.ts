@@ -40,6 +40,7 @@ async function run(){let checks=0;const rollback=new Error('Rollback teacher wor
  await assert.rejects(getHomeworkContext(caller,plan.id,tx),TeacherError);checks++;
  await assert.rejects(confirmPlan(outsider,plan.id,[first!.id],tx),TeacherError);checks++;
  await assert.rejects(confirmPlan(caller,plan.id,[999999],tx),TeacherError);checks++;
+ const [learner]=await tx.insert(learners).values({firstName:'Private',surname:'Learner',admissionNumber:'1',schoolId:school!.id,classId:cls!.id,accountSetUp:true}).returning();
  await confirmPlan(caller,plan.id,[first!.id],tx,new Date('2026-10-10'));
  const progress=await getPlanning(caller,allocation!.id,tx);assert.equal(progress.chapter!.taught,1);assert.ok(!progress.taughtConceptIds.includes(second!.id));checks++;
  const customId=progress.customConcepts[0]!.id;await savePlan(caller,allocation!.id,{chapterId:chapter!.id,date:'2026-10-10',conceptIds:[customId]},tx);assert.ok(!progress.taughtConceptIds.includes(customId));checks++;
@@ -49,7 +50,6 @@ async function run(){let checks=0;const rollback=new Error('Rollback teacher wor
  await tx.update(concepts).set({learningOutcomes:['Can you apply inertia?']}).where(eq(concepts.id,first!.id));
  const replan=await savePlan(caller,allocation!.id,{chapterId:chapter!.id,date:'2026-10-09',conceptIds:[first!.id]},tx);await confirmPlan(caller,replan.id,[first!.id],tx,new Date('2026-10-10'));assert.equal((await getPlanning(caller,allocation!.id,tx)).chapter!.taught,1);checks++;
  assert.deepEqual((await tx.select().from(lessonConcepts).where(and(eq(lessonConcepts.lessonId,plan.id),eq(lessonConcepts.conceptId,first!.id))))[0]!.teachingBrief,snapshot,'Re-teaching creates a separate brief without rewriting the original');checks++;
- const [learner]=await tx.insert(learners).values({firstName:'Private',surname:'Learner',admissionNumber:'1',schoolId:school!.id,classId:cls!.id,accountSetUp:true}).returning();
  const [latestItem]=await tx.select().from(lessonConcepts).where(eq(lessonConcepts.lessonId,replan.id));await tx.insert(lessonFeedback).values({learnerID:learner!.id,lessonConceptId:latestItem!.id,reaction:'didnt_understand'});
  const flagged=await getPlanning(caller,allocation!.id,tx);assert.equal(flagged.flaggedConcepts[0]!.didntUnderstand,1);assert.ok(!JSON.stringify(flagged).includes('Private'));checks++;
  const question={conceptId:first!.id,body:'Explain inertia',memo:''};const payload={dueDate:'2030-01-01T12:00:00Z',memoReleaseType:'at_due_date' as const,questions:[question]};
@@ -60,7 +60,7 @@ async function run(){let checks=0;const rollback=new Error('Rollback teacher wor
  await updateQuestionMemo(caller,savedQuestion!.id,'Worked answer',tx);assert.equal((await tx.select().from(questions).where(eq(questions.id,savedQuestion!.id)))[0]!.memo,'Worked answer');checks++;
  await assert.rejects(sendHomework(caller,plan.id,payload,tx),TeacherError);checks++;
  assert.equal((await getDashboard('learner',learner!.id,school!.id,tx)).subjects[0]!.lessons.find(item=>item.id===plan.id)!.homework.length,1);checks++;
- const future=await savePlan(caller,allocation!.id,{chapterId:chapter!.id,date:'2030-01-01',conceptIds:[second!.id]},tx);await assert.rejects(confirmPlan(caller,future.id,[second!.id],tx,new Date('2026-10-10')),TeacherError);checks++;
+ const future=await savePlan(caller,allocation!.id,{chapterId:chapter!.id,date:'2026-12-31',conceptIds:[second!.id]},tx);await assert.rejects(confirmPlan(caller,future.id,[second!.id],tx,new Date('2026-10-10')),TeacherError);checks++;
  const [nextChapter]=await tx.insert(chapters).values({subjectId:subject!.id,gradeNumber:11,name:'Next chapter',orderIndex:2}).returning();
  const [nextTopic]=await tx.insert(topics).values({chapterId:nextChapter!.id,name:'Next topic',orderIndex:1}).returning();
  const later=await tx.insert(concepts).values(Array.from({length:12},(_,i)=>({chapterId:nextChapter!.id,topicId:nextTopic!.id,name:'Later '+i,orderIndex:i}))).returning();

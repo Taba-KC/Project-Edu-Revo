@@ -52,6 +52,18 @@ async function run(){
   check((await subjectRoster(tx,allocations.find(row=>row.subjectId===agric.id)!.id)).length===1);
   const workspace=await getLearnerWorkspace(caller,tx);
   check(workspace.subjects.length===2&&!workspace.subjects.some(row=>row.subjectId===geography.id));
+  // Returning to the same split class must not silently reuse its previous confirmation.
+  const returnRollback=new Error('Rollback return-to-class scenario');
+  try { await tx.transaction(async nested=>{
+    const moving=[{firstName:'Learner',surname:'1',identifier:'1'}];
+    const leave=await reviewLearnerRoster(nested,school.id,other.id,moving,'update',year);
+    await commitLearnerRoster(nested,school.id,other.id,moving,'update',year,leave.reviewHash);
+    const back=await reviewLearnerRoster(nested,school.id,master.id,moving,'update',year);
+    await commitLearnerRoster(nested,school.id,master.id,moving,'update',year,back.reviewHash);
+    check((await learnerLearningSetup(nested,caller)).status==='choose-subjects');
+    check((await nested.select().from(learnerStreamSelections).where(eq(learnerStreamSelections.learnerId,l1.id)))[0].streamId===a.id);
+    throw returnRollback;
+  }); } catch(error) { if(error!==returnRollback)throw error; }
   // Updating keeps the unlisted learner, transfers an existing learner, adds a new one.
   const rows=[{firstName:'Corrected',surname:'One',identifier:'1'},{firstName:'Transferred',surname:'Three',identifier:'3'},{firstName:'New',surname:'Four',identifier:'4'}];
   const update=await reviewLearnerRoster(tx,school.id,master.id,rows,'update',year);
@@ -121,6 +133,23 @@ async function run(){
     check((await fetch(url+`/schools/${school.id}/classes/${master.id}/learners/import/commit`,{method:'POST',headers,body:JSON.stringify({...reviewPayload,reviewHash})})).status===201);
     check((await fetch(url+'/learners/me/learning-setup',{method:'POST',headers:learnerHeaders,body:JSON.stringify({classId:master.id,academicYear:year+1,streamId:b.id,revision:current.revision})})).status===409);
     check((await fetch(url+`/schools/${school.id}/classes/${master.id}/learners/${l1.id}/stream-selection`,{method:'DELETE',headers})).status===200);
+    check((await learnerLearningSetup(tx,caller)).status==='choose-subjects');
+    // Direct transfers use the same live administrative grants and preserve accounts.
+    const [moveTarget]=await tx.insert(classes).values({gradeId:grade.id,name:'11D',academicYear:year+1}).returning();
+    const moveBase=`/schools/${school.id}/classes/${master.id}/learner-transfers`;
+    const moveBody={targetClassId:moveTarget.id,learnerIds:[l1.id]};
+    check((await fetch(url+`/schools/${school.id+100000}/classes/${master.id}/learner-transfers/review`,{method:'POST',headers,body:JSON.stringify(moveBody)})).status===403);
+    check((await fetch(url+moveBase+'/review',{method:'POST',headers,body:JSON.stringify({targetClassId:other.id,learnerIds:[l1.id]})})).status===400);
+    const moveReview=await fetch(url+moveBase+'/review',{method:'POST',headers,body:JSON.stringify(moveBody)});check(moveReview.status===200);
+    const moveHash=(await moveReview.json() as {reviewHash:string}).reviewHash;
+    check((await fetch(url+moveBase+'/commit',{method:'POST',headers,body:JSON.stringify({...moveBody,reviewHash:'0'.repeat(64)})})).status===409);
+    check((await fetch(url+moveBase+'/commit',{method:'POST',headers,body:JSON.stringify({...moveBody,reviewHash:moveHash})})).status===200);
+    check((await tx.select().from(learners).where(eq(learners.id,l1.id)))[0].classId===moveTarget.id);
+    const backBase=`/schools/${school.id}/classes/${moveTarget.id}/learner-transfers`;
+    const backBody={targetClassId:master.id,learnerIds:[l1.id]};
+    const backReview=await fetch(url+backBase+'/review',{method:'POST',headers,body:JSON.stringify(backBody)});check(backReview.status===200);
+    const backHash=(await backReview.json() as {reviewHash:string}).reviewHash;
+    check((await fetch(url+backBase+'/commit',{method:'POST',headers,body:JSON.stringify({...backBody,reviewHash:backHash})})).status===200);
     check((await learnerLearningSetup(tx,caller)).status==='choose-subjects');
    }finally{await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()));(db as any).transaction=originalTransaction;}
    let passed=false,status=200;const res={status(value:number){status=value;return this;},json(){return this;}};

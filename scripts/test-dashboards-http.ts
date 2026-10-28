@@ -23,7 +23,7 @@ async function run() {
     assert.equal((await get('/staff/me/dashboard',learnerToken)).status,403);checks++;
     assert.equal((await get('/learners/me/dashboard',staffToken)).status,403);checks++;
     assert.equal((await get('/staff/me/dashboard',generateAccessToken(-1,'person',null,'teacher'))).status,403);checks++;
-    assert.equal((await get('/staff/me/dashboard',staffToken)).status,404);checks++;
+    assert.equal((await get('/staff/me/dashboard',staffToken)).status,403);checks++;
     assert.equal((await get('/learners/me/dashboard',learnerToken)).status,404);checks++;
     const [person]=await db.select().from(people).where(eq(people.accountSetUp,true)).limit(1);
     if(person) { const response=await get('/staff/me/dashboard',generateAccessToken(person.id,'person',person.schoolId,'teacher')); assert.equal(response.status,200); const body=await response.json() as {profile:{id:number,passwordHash?:string},subjects:unknown[]};assert.equal(body.profile.id,person.id);assert.equal(body.profile.passwordHash,undefined);checks++; }

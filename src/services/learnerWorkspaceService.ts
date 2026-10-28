@@ -54,7 +54,7 @@ export async function getLearnerWorkspace(caller: AuthPayload, database: Databas
       const attendanceLocation=split.cls.streamConfiguration?.locations.find(location=>location.subjectId===allocation.subjectId)??null;
       result.push({ ...allocation, attendanceLocation, academicYear:split.cls.academicYear, syllabus: syllabus.map(concept => ({ ...concept, taught: taught.has(concept.id) })),
         lessons: history.filter(lesson => ['planned', 'confirmed'].includes(lesson.status)).map(lesson => ({ id: lesson.id, lessonNumber: lesson.lessonNumber, date: lesson.date, status: lesson.status,
-          canRespond: lesson.status === 'confirmed' && !history.some(next => next.lessonNumber > lesson.lessonNumber && next.createdAt >= lesson.createdAt),
+          canRespond: (lesson.learnerIdsSnapshot === null || lesson.learnerIdsSnapshot.includes(caller.accountId)) && lesson.status === 'confirmed' && !history.some(next => next.lessonNumber > lesson.lessonNumber && next.createdAt >= lesson.createdAt),
           concepts: items.filter(item => item.lessonId === lesson.id).map(item => {
             const brief = lesson.status === 'confirmed' ? item.teachingBrief : null;
             const goals = brief?.learningOutcomes ?? item.learningOutcomes;

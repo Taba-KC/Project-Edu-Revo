@@ -5,7 +5,7 @@
  */
 import { db } from '../db';
 import { schools } from '../db/schema';
-import { eq, isNull } from 'drizzle-orm';
+import { eq, isNull, and } from 'drizzle-orm';
 
 /**
  * Build the supplied location/school setup records; this is a write operation, not a
@@ -59,7 +59,7 @@ export async function activateSchool(data: {
       code: data.code,
       activatedAt: new Date(),
     })
-    .where(eq(schools.id, data.schoolId))
+    .where(and(eq(schools.id, data.schoolId), isNull(schools.activatedAt)))
     .returning();
 
   return updated;

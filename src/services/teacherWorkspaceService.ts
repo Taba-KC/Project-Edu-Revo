@@ -1,4 +1,4 @@
-import { subjectRoster } from './classStreamService';
+import { subjectRoster, lessonRoster } from './classStreamService';
 /**
  * Main teacher workflow rules: verify teaching ownership, prepare planning concepts, save
  * plans, confirm teaching and send homework. Related writes use transactions so failures
@@ -26,7 +26,7 @@ export function schoolDate(now = new Date()) { return new Intl.DateTimeFormat('e
 export async function teacherScope(tx: Tx, caller: AuthPayload, classSubjectId: number, chapterId?: number) {
   const [person] = await tx.select().from(people).where(and(eq(people.id, caller.accountId), eq(people.schoolId, caller.schoolId ?? -1), eq(people.accountSetUp, true)));
   if (caller.accountType !== 'person' || !person || !['teacher', 'principal'].includes(person.role)) throw new TeacherError('Teaching access required.', 403);
-  const [allocation] = await tx.select({ id: classSubjects.id, classId: classes.id, className: classes.name, subjectId: classSubjects.subjectId, gradeNumber: grades.number, personId: classSubjects.personId }).from(classSubjects).innerJoin(classes, eq(classes.id, classSubjects.classId)).innerJoin(grades, eq(grades.id, classes.gradeId)).where(and(eq(classSubjects.id, classSubjectId), eq(classSubjects.active, true), eq(grades.schoolId, person.schoolId)));
+  const [allocation] = await tx.select({ academicYear: classSubjects.academicYear, id: classSubjects.id, classId: classes.id, className: classes.name, subjectId: classSubjects.subjectId, gradeNumber: grades.number, personId: classSubjects.personId }).from(classSubjects).innerJoin(classes, eq(classes.id, classSubjects.classId)).innerJoin(grades, eq(grades.id, classes.gradeId)).where(and(eq(classSubjects.id, classSubjectId), eq(classSubjects.active, true), eq(classSubjects.academicYear, classes.academicYear), eq(grades.schoolId, person.schoolId)));
   if (!allocation) throw new TeacherError('Teaching assignment not found.', 404);
   const library = await getCurriculum(allocation.subjectId, allocation.gradeNumber, tx);
   const overrides = await tx.select().from(classChapters).where(eq(classChapters.classSubjectId, classSubjectId));
@@ -41,7 +41,9 @@ export async function teacherScope(tx: Tx, caller: AuthPayload, classSubjectId: 
 export async function lessonScope(tx: Tx, caller: AuthPayload, lessonId: number) {
   const [lesson] = await tx.select().from(lessons).where(eq(lessons.id, lessonId));
   if (!lesson) throw new TeacherError('Lesson not found.', 404);
-  await teacherScope(tx, caller, lesson.classSubjectId, lesson.chapterId);
+  const scope = await teacherScope(tx, caller, lesson.classSubjectId, lesson.chapterId);
+  const included = await tx.selectDistinct({ chapterId: concepts.chapterId }).from(lessonConcepts).innerJoin(concepts, eq(concepts.id, lessonConcepts.conceptId)).where(eq(lessonConcepts.lessonId, lessonId));
+  if (included.some(item => !scope.chapters.some(chapter => chapter.id === item.chapterId))) throw new TeacherError('This lesson includes chapters assigned to another teacher. Ask your administrator to align the teaching assignments.', 403);
   return lesson;
 }
 /**
@@ -62,13 +64,15 @@ export async function getPlanning(caller: AuthPayload, classSubjectId: number, d
     const progress = scope.chapters.map(chapter => { const count = chapter.topics.flatMap(topic => topic.concepts); return { ...chapter, total: count.length, taught: count.filter(concept => taught.has(concept.id)).length }; });
     const current = progress.find(chapter => chapter.taught < chapter.total) ?? progress[progress.length - 1] ?? null;
     const customConcepts = current ? await tx.select({ id: concepts.id, name: concepts.name, topicId: concepts.topicId }).from(concepts).where(and(eq(concepts.chapterId, current.id), eq(concepts.classSubjectId, classSubjectId), eq(concepts.active, true), eq(concepts.isCustom, true))).orderBy(concepts.orderIndex, concepts.id) : [];
-    const roster = await subjectRoster(tx,classSubjectId);
-    const reactions = items.length && roster.length ? await tx.select({ lessonConceptId: lessonFeedback.lessonConceptId, reaction: lessonFeedback.reaction }).from(lessonFeedback).where(and(inArray(lessonFeedback.lessonConceptId, items.map(item => item.id)), inArray(lessonFeedback.learnerID, roster.map(row => row.id)))) : [];
+    const audiences = new Map<number, { id: number }[]>();
+    for (const lesson of confirmed) audiences.set(lesson.id, await lessonRoster(tx, lesson.id));
+    const reactions = items.length ? await tx.select({ learnerId: lessonFeedback.learnerID, lessonConceptId: lessonFeedback.lessonConceptId, reaction: lessonFeedback.reaction }).from(lessonFeedback).where(and(inArray(lessonFeedback.lessonConceptId, items.map(item => item.id)))) : [];
     const flags = [...(current?.topics.flatMap(topic => topic.concepts) ?? []), ...customConcepts].flatMap(concept => {
       for (const lesson of confirmed) {
         const item = items.find(item => item.lessonId === lesson.id && item.conceptId === concept.id);
         if (!item) continue;
-        const feedback = reactions.filter(row => row.lessonConceptId === item.id);
+        const roster = audiences.get(lesson.id)!;
+        const feedback = reactions.filter(row => row.lessonConceptId === item.id && roster.some(learner => learner.id === row.learnerId));
         if (!feedback.length) continue;
         const count = feedback.filter(row => row.reaction === 'didnt_understand').length;
         return roster.length && count / roster.length >= .3 ? [{ ...concept, didntUnderstand: count, totalLearners: roster.length }] : [];
@@ -84,7 +88,7 @@ export async function getPlanning(caller: AuthPayload, classSubjectId: number, d
      */
     const nextConcepts = ordered.filter(concept => !taught.has(concept.id)).slice(0, 10);
     const planningConcepts = ordered.filter(concept => nextConcepts.some(next => next.id === concept.id) || reviewConcepts.some(review => review.id === concept.id)).map(concept => ({ ...concept, reviewGoals: draft.find(item => item.conceptId === concept.id)?.reviewGoals ?? [] }));
-    return { chapter: current, chapters: scope.chapters.map(chapter => ({ id: chapter.id, name: chapter.name, topics: chapter.topics.map(topic => ({ id: topic.id, name: topic.name })) })), customConcepts, reviewConcepts, planningConcepts, taughtConceptIds: Array.from(taught), flaggedConcepts: flags, suggestedDate: schoolDate(), aiAvailable: !!process.env.OPENAI_API_KEY };
+    return { chapter: current, chapters: scope.chapters.map(chapter => ({ id: chapter.id, name: chapter.name, topics: chapter.topics.map(topic => ({ id: topic.id, name: topic.name })) })), customConcepts, reviewConcepts, planningConcepts, taughtConceptIds: Array.from(taught), flaggedConcepts: flags, suggestedDate: schoolDate() < `${scope.allocation.academicYear}-01-01` ? `${scope.allocation.academicYear}-01-01` : schoolDate() > `${scope.allocation.academicYear}-12-31` ? `${scope.allocation.academicYear}-12-31` : schoolDate(), aiAvailable: !!process.env.OPENAI_API_KEY };
   });
 }
 /**
@@ -94,8 +98,11 @@ export async function getPlanning(caller: AuthPayload, classSubjectId: number, d
  */
 export async function savePlan(caller: AuthPayload, classSubjectId: number, data: { chapterId: number; date: string; conceptIds: number[]; reviewConceptIds?: number[]; customConcepts?: { name: string; topicId: number }[] }, database: Database = db) {
   return database.transaction(async tx => {
+    await tx.execute(sql`select pg_advisory_xact_lock(7411, 0)`);
     await tx.execute(sql`select pg_advisory_xact_lock(7413, ${classSubjectId})`);
     const scope = await teacherScope(tx, caller, classSubjectId, data.chapterId);
+    const parsedDate = new Date(`${data.date}T12:00:00Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data.date) || !Number.isFinite(parsedDate.getTime()) || parsedDate.toISOString().slice(0,10) !== data.date || Number(data.date.slice(0,4)) !== scope.allocation.academicYear) throw new TeacherError(`Choose a valid lesson date in the allocation’s academic year (${scope.allocation.academicYear}).`);
     const chapter = scope.chapters.find(row => row.id === data.chapterId)!;
     const draft = await tx.select().from(lessonReviewConcepts).where(and(eq(lessonReviewConcepts.classSubjectId, classSubjectId), eq(lessonReviewConcepts.personId, caller.accountId)));
     const ordered = await orderedTeachingConcepts(tx, scope.chapters.map(chapter => chapter.id), classSubjectId);
@@ -142,6 +149,7 @@ export async function savePlan(caller: AuthPayload, classSubjectId: number, data
  */
 export async function confirmPlan(caller: AuthPayload, lessonId: number, conceptIds: number[], database: Database = db, now = new Date()) {
   return database.transaction(async tx => {
+    await tx.execute(sql`select pg_advisory_xact_lock(7411, 0)`);
     await tx.select().from(lessons).where(eq(lessons.id, lessonId)).for('update');
     const lesson = await lessonScope(tx, caller, lessonId);
     if (lesson.status !== 'planned') throw new TeacherError('This lesson has already been confirmed.', 409);
@@ -161,7 +169,7 @@ export async function confirmPlan(caller: AuthPayload, lessonId: number, concept
       const concept = guidance.find(concept => concept.id === item.conceptId)!;
       await tx.update(lessonConcepts).set({ teachingBrief: { conceptName: concept.name, prerequisites: concept.prerequisites, learningOutcomes: concept.learningOutcomes } }).where(eq(lessonConcepts.id, item.id));
     }
-    const [confirmed] = await tx.update(lessons).set({ status: 'confirmed' }).where(eq(lessons.id, lessonId)).returning();
+    const [confirmed] = await tx.update(lessons).set({ status: 'confirmed', learnerIdsSnapshot: (await subjectRoster(tx, lesson.classSubjectId)).map(row => row.id) }).where(eq(lessons.id, lessonId)).returning();
     return confirmed!;
   });
 }
@@ -186,6 +194,7 @@ export type HomeworkInput = { dueDate: string; memoReleaseType: 'immediately' | 
  */
 export async function sendHomework(caller: AuthPayload, lessonId: number, data: HomeworkInput, database: Database = db, now = new Date()) {
   return database.transaction(async tx => {
+    await tx.execute(sql`select pg_advisory_xact_lock(7411, 0)`);
     // Serialize sends for this lesson so retries never create partial or duplicate sets.
     await tx.select().from(lessons).where(eq(lessons.id, lessonId)).for('update');
     const context = await getHomeworkContext(caller, lessonId, tx);
@@ -208,6 +217,7 @@ export async function sendHomework(caller: AuthPayload, lessonId: number, data: 
  */
 export async function updateQuestionMemo(caller: AuthPayload, questionId: number, memo: string, database: Database = db) {
  return database.transaction(async tx=>{
+  await tx.execute(sql`select pg_advisory_xact_lock(7411, 0)`);
   const [question]=await tx.select({id:questions.id,lessonId:homework.lessonId}).from(questions).innerJoin(homework,eq(homework.id,questions.homeworkId)).where(eq(questions.id,questionId));
   if(!question) throw new TeacherError('Question not found.',404);
   await lessonScope(tx,caller,question.lessonId);

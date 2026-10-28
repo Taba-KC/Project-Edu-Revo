@@ -20,13 +20,13 @@ export type LessonReaction = 'understood' | 'didnt_understand';
  */
 async function learnerLesson(tx: Tx, caller: AuthPayload, lessonId: number) {
   const enrolled=await learnerSubjectIds(tx,caller);
-  const [lesson] = await tx.select({ id: lessons.id, status: lessons.status, createdAt: lessons.createdAt, lessonNumber: lessons.lessonNumber, classSubjectId: lessons.classSubjectId }).from(lessons)
+  const [lesson] = await tx.select({ audience: lessons.learnerIdsSnapshot, id: lessons.id, status: lessons.status, createdAt: lessons.createdAt, lessonNumber: lessons.lessonNumber, classSubjectId: lessons.classSubjectId }).from(lessons)
     .innerJoin(classSubjects, eq(classSubjects.id, lessons.classSubjectId)).innerJoin(classes, eq(classes.id, classSubjects.classId)).innerJoin(grades, eq(grades.id, classes.gradeId))
     .innerJoin(learners, eq(learners.classId, classes.id))
     .where(and(eq(lessons.id, lessonId), inArray(classSubjects.subjectId,enrolled.length?enrolled:[-1]), eq(classSubjects.active, true), eq(learners.id, caller.accountId), eq(learners.accountSetUp, true), eq(learners.schoolId, caller.schoolId ?? -1), eq(grades.schoolId, caller.schoolId ?? -1)));
   if (caller.accountType !== 'learner' || !lesson || lesson.status !== 'confirmed') throw new TeacherError('Confirmed lesson not found.', 404);
   const [next] = await tx.select({ id: lessons.id }).from(lessons).where(and(eq(lessons.classSubjectId, lesson.classSubjectId), gt(lessons.lessonNumber, lesson.lessonNumber), gte(lessons.createdAt, lesson.createdAt))).limit(1);
-  return { ...lesson, canRespond: !next };
+  return { ...lesson, canRespond: !next && (lesson.audience === null || lesson.audience.includes(caller.accountId)) };
 }
 
 /**
@@ -51,6 +51,7 @@ export async function getLearnerLessonFeedback(caller: AuthPayload, lessonId: nu
 export async function submitLessonFeedback(caller: AuthPayload, data: { lessonConceptId: number; reaction: LessonReaction; isAnonymous: boolean }, database: Database = db) {
   if (!['understood', 'didnt_understand'].includes(data.reaction)) throw new TeacherError('Choose I get it or I don’t get it.');
   return database.transaction(async tx => {
+    await tx.execute(sql`select pg_advisory_xact_lock(7411, 0)`);
     const [item] = await tx.select({ lessonId: lessonConcepts.lessonId, classSubjectId: lessons.classSubjectId }).from(lessonConcepts).innerJoin(lessons, eq(lessons.id, lessonConcepts.lessonId)).where(eq(lessonConcepts.id, data.lessonConceptId));
     if (!item) throw new TeacherError('Lesson concept not found.', 404);
     await tx.execute(sql`select pg_advisory_xact_lock(7413, ${item.classSubjectId})`);
@@ -65,6 +66,7 @@ export async function submitLessonFeedback(caller: AuthPayload, data: { lessonCo
 export async function submitLearningGoalFeedback(caller: AuthPayload, lessonConceptId: number, data: { goalIndex: number; answer: 'yes' | 'no' }, database: Database = db) {
   if (!Number.isInteger(data.goalIndex) || data.goalIndex < 0 || data.goalIndex > 4 || !['yes', 'no'].includes(data.answer)) throw new TeacherError('Choose a valid learning goal and Yes or No.');
   return database.transaction(async tx => {
+    await tx.execute(sql`select pg_advisory_xact_lock(7411, 0)`);
     const [link] = await tx.select({ lessonId: lessonConcepts.lessonId, classSubjectId: lessons.classSubjectId }).from(lessonConcepts).innerJoin(lessons, eq(lessons.id, lessonConcepts.lessonId)).where(eq(lessonConcepts.id, lessonConceptId));
     if (!link) throw new TeacherError('Lesson concept not found.', 404);
     await tx.execute(sql`select pg_advisory_xact_lock(7413, ${link.classSubjectId})`);

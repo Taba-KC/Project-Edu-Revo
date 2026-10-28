@@ -13,13 +13,14 @@ export async function reviewLearnerRoster(tx: Tx, schoolId: number, classId: num
   if (!target || target.schoolId !== schoolId) throw new RosterImportError('Choose a class in your school.', 404);
   if (!['add', 'update', 'progression'].includes(mode) || !Number.isInteger(academicYear) || academicYear < target.academicYear || academicYear > 2100 || (mode !== 'progression' && academicYear !== target.academicYear)) throw new RosterImportError('Choose the class’s current academic year, or a later year for progression.');
   const existing = await tx.select({ learner: learners, className: classes.name, classYear: classes.academicYear }).from(learners).leftJoin(classes, eq(classes.id, learners.classId)).where(eq(learners.schoolId, schoolId));
+  const historicalYears = existing.length ? await tx.select({ learnerId: learnerClassHistory.learnerId, year: sql<number>`max(${learnerClassHistory.academicYear})`.mapWith(Number) }).from(learnerClassHistory).where(inArray(learnerClassHistory.learnerId, existing.map(row => row.learner.id))).groupBy(learnerClassHistory.learnerId) : [];
   const numbers = existing.map(row => row.learner.admissionNumber);
   const issues = validateRosterRows(rows, mode === 'add' ? numbers : [], 'learners');
   if (issues.length) throw new RosterImportError(issues.slice(0, 5).map(issue => 'Row ' + issue.row + ': ' + issue.errors.join('; ')).join('. '));
   const matches = rows.map(row => {
     const found = existing.filter(item => key(item.learner.admissionNumber) === key(row.identifier));
     if (found.length > 1) throw new RosterImportError('Admission number ' + row.identifier + ' matches multiple existing records. Correct the school register first.');
-    if (found[0]?.classYear && found[0].classYear > academicYear) throw new RosterImportError('Cannot move ' + row.identifier + ' backwards from a later academic year.');
+    if (found[0] && Math.max(found[0].classYear ?? 0, historicalYears.find(item => item.learnerId === found[0]!.learner.id)?.year ?? 0) > academicYear) throw new RosterImportError('Cannot move ' + row.identifier + ' backwards from a later academic year.');
     return { row, existing: found[0] };
   });
   const transfers = matches.filter(item => item.existing?.learner.classId && item.existing.learner.classId !== classId).map(item => ({ admissionNumber: item.row.identifier, name: item.row.firstName + ' ' + item.row.surname, fromClass: item.existing!.className }));
@@ -55,7 +56,9 @@ export async function commitLearnerRoster(tx: Tx, schoolId: number, classId: num
     if (moved) {
       await tx.update(learnerClassHistory).set({ endedAt: now }).where(and(eq(learnerClassHistory.learnerId, learnerId!), isNull(learnerClassHistory.endedAt)));
       await tx.insert(learnerClassHistory).values({ learnerId: learnerId!, classId, academicYear });
-      await tx.delete(learnerStreamSelections).where(eq(learnerStreamSelections.learnerId, learnerId!));
+      // Keep the previous subject choice, but a return to the same class/year is a new
+      // membership and must not silently reuse its earlier confirmation.
+      await tx.update(learnerStreamSelections).set({ revision: -1 }).where(and(eq(learnerStreamSelections.learnerId, learnerId!), eq(learnerStreamSelections.classId, classId), eq(learnerStreamSelections.academicYear, academicYear)));
     }
   }
   return { saved: rows.length, ...rosterImpact(result), academicYear };

@@ -28,6 +28,7 @@ export interface ClassUpdateInput {
 export class InvalidClassNameError extends Error {}
 export class DuplicateClassNameError extends Error {}
 export class ClassNotFoundError extends Error {}
+export class ClassHistoryError extends Error {}
 
 /**
  * Convert an entered class label to the canonical grade/class naming format used by
@@ -174,6 +175,12 @@ export async function updateClass(classId: number, data: ClassUpdateInput) {
  */
 export async function deleteClassContents(client: PoolClient, classIds: number[]) {
   if (classIds.length === 0) return;
+  await client.query('SELECT pg_advisory_xact_lock(7411,0)');
+  await client.query('SELECT id FROM classes WHERE id = ANY($1::int[]) FOR UPDATE', [classIds]);
+  const protectedRows = await client.query(`SELECT 1 FROM learners WHERE class_id=ANY($1::int[])
+    UNION ALL SELECT 1 FROM learner_class_history WHERE class_id=ANY($1::int[])
+    UNION ALL SELECT 1 FROM lessons l JOIN class_subjects cs ON cs.id=l.class_subject_id WHERE cs.class_id=ANY($1::int[]) LIMIT 1`, [classIds]);
+  if (protectedRows.rowCount) throw new ClassHistoryError('This class has learners or recorded teaching history. Transfer its learners or retain the class; historical records cannot be deleted with a class.');
 
   await client.query(`
     DELETE FROM question_feedback
@@ -274,6 +281,7 @@ export async function deleteClassById(classId: number, gradeId: number, schoolId
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(7411,0)');
 
     const classResult = await client.query(
       `

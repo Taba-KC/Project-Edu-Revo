@@ -1,3 +1,4 @@
+import { requireAppManager } from '../middleware/appManager';
 /**
  * HTTP routing for this feature. Lower-level chapter concept endpoints; shared curriculum
  * editing also has manager endpoints. req.params contains URL IDs, req.body contains
@@ -7,7 +8,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { createConcept, getConceptsByChapter } from '../services/conceptService';
-import { requireAuth, requirePrincipal } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 import { requireCurriculumReader } from '../middleware/schoolAdministration';
 
 const router = Router();
@@ -22,7 +23,7 @@ const createConceptSchema = z.object({
 /**
  * POST /chapters/:chapterId/concepts: Create data or run the submitted operation.
  */
-router.post('/chapters/:chapterId/concepts', requireAuth, requirePrincipal, async (req, res) => {
+router.post('/chapters/:chapterId/concepts', requireAuth, requireAppManager, async (req, res) => {
   const chapterId = parseInt(req.params.chapterId as string);
 
   const result = createConceptSchema.safeParse(req.body);

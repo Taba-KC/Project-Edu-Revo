@@ -1,3 +1,6 @@
+import { db } from '../db';
+import { people } from '../db/schema';
+import { and, eq } from 'drizzle-orm';
 /**
  * Authentication and coarse role checks for incoming HTTP requests. requireAuth verifies the
  * signed token and attaches req.caller; role middleware narrows permitted account types.
@@ -27,14 +30,20 @@ declare global {
  * Verify the bearer token signature and expiry before trusting its claims. Successful
  * verification attaches caller details for later handlers.
  */
-export function requireAuth(req: Request, res: Response, next: NextFunction) {
+export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'No token provided' });
   }
   const token = header.split(' ')[1];
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as AuthPayload;
+    const payload = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as AuthPayload;
+    // Roles and school membership can change while a signed token is still valid.
+    if (payload.accountType === 'person') {
+      const [current] = await db.select().from(people).where(and(eq(people.id, payload.accountId), eq(people.schoolId, payload.schoolId ?? -1)));
+      if (!current?.accountSetUp) return res.status(403).json({ error: 'Your staff account is no longer available.' });
+      payload.role = current.role;
+    }
     req.caller = payload;
     return next();
   } catch {
