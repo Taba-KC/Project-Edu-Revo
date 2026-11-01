@@ -57,17 +57,6 @@ export async function findLearnerForOnboarding(schoolCode: string, admissionNumb
 }
 
 /**
- * Claim a learner record with validated login details and a hashed password.
- */
-export async function completeLearnerOnboarding(learnerId: number, username: string, passwordHash: string) {
-  const [updated] = await db.update(learners)
-    .set({ username, passwordHash, accountSetUp: true })
-    .where(eq(learners.id, learnerId))
-    .returning();
-  return updated;
-}
-
-/**
  * Insert multiple learner roster records through the older bulk helper; current reviewed
  * imports use rosterImportService.
  */

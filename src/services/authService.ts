@@ -8,7 +8,8 @@ import crypto from 'crypto';
 import bcrypt from 'bcrypt';
 import { eq, and } from 'drizzle-orm';
 import { db } from '../db';
-import { people, learners, refreshTokens, appManagers } from '../db/schema';
+import { people, learners, refreshTokens, appManagers, learnerAccountClaims } from '../db/schema';
+import { learnerSession } from './accountReviewService';
 
 /**
  * Keep the signing secret on the server. Browser decoding of claims is not equivalent to
@@ -22,19 +23,19 @@ const REFRESH_TOKEN_EXPIRY_DAYS = 7;
  * Sign short-lived account claims with the server secret. Clients can read claims but cannot
  * safely create or verify this signature themselves.
  */
-export function generateAccessToken(accountId: number, accountType: string, schoolId: number | null, role?: string) {
-  return jwt.sign({ accountId, accountType, schoolId, role }, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
+export function generateAccessToken(accountId: number, accountType: string, schoolId: number | null, role?: string, credential?: { claimId?: number | null; sessionVersion: number }) {
+  return jwt.sign({ accountId, accountType, schoolId, role, ...credential }, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
 }
 
 /**
  * Hash the random credential supplied by the login function and store that hash with its
  * expiry/account details, rather than storing the usable token.
  */
-async function storeRefreshToken(rawToken: string, accountId: number, accountType: string, schoolId: number | null) {
+async function storeRefreshToken(rawToken: string, accountId: number, accountType: string, schoolId: number | null, credential?: { claimId?: number | null; sessionVersion: number }) {
   const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + REFRESH_TOKEN_EXPIRY_DAYS);
-  await db.insert(refreshTokens).values({ tokenHash, accountId, accountType, schoolId, expiresAt });
+  await db.insert(refreshTokens).values({ tokenHash, accountId, accountType, schoolId, expiresAt, ...credential });
   return rawToken;
 }
 
@@ -57,15 +58,24 @@ export async function loginPerson(username: string, password: string) {
  * Check a claimed learner account and issue the learner session tokens.
  */
 export async function loginLearner(username: string, password: string) {
+  const candidates = await db.select().from(learnerAccountClaims).where(eq(learnerAccountClaims.username, username));
+  for (const candidate of candidates) {
+    if (!candidate.passwordHash || candidate.status === 'revoked' || !(await bcrypt.compare(password, candidate.passwordHash))) continue;
+    const [learner] = await db.select().from(learners).where(eq(learners.id, candidate.learnerId));
+    if (!learner) continue;
+    const credential = { claimId: candidate.id, sessionVersion: candidate.sessionVersion };
+    await learnerSession({ accountId: learner.id, accountType: 'learner', schoolId: learner.schoolId, ...credential });
+    const rawRefresh = crypto.randomBytes(64).toString('hex');
+    await storeRefreshToken(rawRefresh, learner.id, 'learner', learner.schoolId, credential);
+    return { accessToken: generateAccessToken(learner.id, 'learner', learner.schoolId, undefined, credential), refreshToken: rawRefresh };
+  }
   const [learner] = await db.select().from(learners).where(eq(learners.username, username));
-  if (!learner?.accountSetUp || !learner.passwordHash) throw new Error('Invalid credentials');
-
-  const valid = await bcrypt.compare(password, learner.passwordHash);
-  if (!valid) throw new Error('Invalid credentials');
-
-  const accessToken = generateAccessToken(learner.id, 'learner', learner.schoolId);
+  if (!learner?.accountSetUp || !learner.passwordHash || !(await bcrypt.compare(password, learner.passwordHash))) throw new Error('Invalid credentials');
+  const credential = { sessionVersion: learner.authVersion };
+  await learnerSession({ accountId: learner.id, accountType: 'learner', schoolId: learner.schoolId, ...credential });
+  const accessToken = generateAccessToken(learner.id, 'learner', learner.schoolId, undefined, credential);
   const rawRefresh  = crypto.randomBytes(64).toString('hex');
-  await storeRefreshToken(rawRefresh, learner.id, 'learner', learner.schoolId);
+  await storeRefreshToken(rawRefresh, learner.id, 'learner', learner.schoolId, credential);
 
   return { accessToken, refreshToken: rawRefresh };
 }
@@ -96,9 +106,9 @@ export async function refreshAccessToken(rawToken: string) {
   }
 
   if (stored.accountType === 'learner') {
-    const [learner]=await db.select().from(learners).where(eq(learners.id,stored.accountId));
-    if(!learner?.accountSetUp || learner.schoolId!==stored.schoolId)throw new Error('Account not found');
-    return generateAccessToken(learner.id,'learner',learner.schoolId);
+    const credential = { claimId: stored.claimId, sessionVersion: stored.sessionVersion };
+    await learnerSession({ accountId: stored.accountId, accountType: 'learner', schoolId: stored.schoolId, ...credential });
+    return generateAccessToken(stored.accountId,'learner',stored.schoolId,undefined,credential);
   }
   throw new Error('Unsupported account');
 }

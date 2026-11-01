@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { requireAuth, requireLearner } from '../middleware/auth';
 import { TeacherError } from '../services/teacherWorkspaceService';
 import { getLearnerWorkspace, getLearnerAnswer } from '../services/learnerWorkspaceService';
-import { submitLearningGoalFeedback } from '../services/lessonResponseService';
+import { submitLearningGoalFeedback, submitLearningGoalFeedbackBatch } from '../services/lessonResponseService';
 const router = Router();
 router.use('/learners/me', requireAuth, requireLearner);
 const id = z.coerce.number().int().positive();
@@ -22,4 +22,8 @@ function endpoint(handler: (req: Request, res: Response) => Promise<unknown>) {
 router.get('/learners/me/workspace', endpoint(async (req, res) => res.json(await getLearnerWorkspace(req.caller!))));
 router.get('/learners/me/questions/:id/answer', endpoint(async (req, res) => res.json(await getLearnerAnswer(req.caller!, id.parse(req.params.id)))));
 router.post('/learners/me/lesson-concepts/:id/goals', endpoint(async (req, res) => res.json(await submitLearningGoalFeedback(req.caller!, id.parse(req.params.id), answer.parse(req.body)))));
+router.post('/learners/me/lesson-concepts/:id/feedback', endpoint(async (req, res) => {
+  const payload = z.object({ answers: z.array(answer).min(1).max(5).refine(items => new Set(items.map(item => item.goalIndex)).size === items.length) }).strict().parse(req.body);
+  res.json(await submitLearningGoalFeedbackBatch(req.caller!, id.parse(req.params.id), payload.answers));
+}));
 export default router;

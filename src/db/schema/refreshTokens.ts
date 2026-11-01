@@ -10,6 +10,8 @@ export const refreshTokens = pgTable('refresh_tokens', {
   accountType: text('account_type').notNull(),
   accountId:   integer('account_id').notNull(),
   schoolId:    integer('school_id'),
+  claimId: integer('claim_id'),
+  sessionVersion: integer('session_version').notNull().default(0),
   expiresAt:   timestamp('expires_at').notNull(),
   createdAt:   timestamp('created_at').defaultNow().notNull(),
 });

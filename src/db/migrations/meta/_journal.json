@@ -204,6 +204,27 @@
       "when": 1793228400000,
       "tag": "0028_auth_attempt_limits",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1793314800000,
+      "tag": "0029_notification_reads",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1793401200000,
+      "tag": "0030_learner_account_reviews",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1793401201000,
+      "tag": "0031_learner_claim_login_index",
+      "breakpoints": true
     }
   ]
 }

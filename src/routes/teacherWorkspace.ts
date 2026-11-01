@@ -7,7 +7,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { requireAuth, requireTeacher } from '../middleware/auth';
-import { TeacherError, getPlanning, savePlan, confirmPlan, getHomeworkContext, sendHomework, updateQuestionMemo } from '../services/teacherWorkspaceService';
+import { TeacherError, getPlanning, savePlan, confirmPlan, getHomeworkContext, sendHomework, updateQuestionMemo, getSavedQuestionMemoContext } from '../services/teacherWorkspaceService';
 import { generateHomeworkDraft, regenerateMemo } from '../services/homeworkAiService';
 import { getLessonFeedback, addLessonConceptToNextLesson } from '../services/teacherLessonFeedbackService';
 const router = Router();
@@ -91,4 +91,10 @@ router.post('/staff/lessons/:id/regenerate-memo', aiLimit, endpoint(async(req,re
  * worked memo.
  */
 router.patch('/staff/questions/:id/memo',endpoint(async(req,res)=>res.json(await updateQuestionMemo(req.caller!,id.parse(req.params.id),z.object({memo:z.string().max(24000)}).parse(req.body).memo))));
+/** Generate a draft for a saved question; publication still requires the explicit memo save. */
+router.post('/staff/questions/:id/generate-memo', aiLimit, endpoint(async(req,res) => {
+  const data = z.object({ memo: z.string().max(24000).optional(), note: z.string().trim().max(2000).optional() }).strict().parse(req.body);
+  const context = await getSavedQuestionMemoContext(req.caller!, id.parse(req.params.id));
+  res.json(await regenerateMemo(context.gradeNumber, context.conceptName, context.body, data.memo ?? context.memo ?? '', data.note || 'Generate a clear, accurate, step-by-step worked answer for this question.'));
+}));
 export default router;

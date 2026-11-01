@@ -11,8 +11,10 @@ export async function staffAccess(caller: AuthPayload) {
   const grants = await db.select().from(administrativeWork).where(and(eq(administrativeWork.personId, person.id), eq(administrativeWork.schoolId, person.schoolId)));
   const allocations = await db.select({ id: classSubjects.id, personId: classSubjects.personId }).from(classSubjects).innerJoin(classes, eq(classes.id, classSubjects.classId)).innerJoin(grades, eq(grades.id, classes.gradeId)).where(and(eq(grades.schoolId, person.schoolId), eq(classSubjects.active, true), eq(classSubjects.academicYear, classes.academicYear)));
   const chapterAssignments = allocations.length ? await db.select().from(classChapters).innerJoin(chapters,eq(chapters.id,classChapters.chapterId)).where(and(eq(chapters.active,true),eq(classChapters.personId, person.id), inArray(classChapters.classSubjectId, allocations.map(row => row.id)))) : [];
+  const managed = await db.select({ id: classes.id }).from(classes).innerJoin(grades, eq(grades.id, classes.gradeId)).where(and(eq(classes.classTeacherId, person.id), eq(grades.schoolId, person.schoolId)));
   return {
     isPrincipal: person.role === 'principal', canTeach: allocations.some(row => row.personId === person.id) || chapterAssignments.length > 0,
+    canManageAccounts: managed.length > 0,
     capabilities: person.role === 'principal' ? [...CAPABILITIES] : grants.map(row => row.capability).filter((key): key is Capability => CAPABILITIES.includes(key as Capability)), schoolId: person.schoolId
   };
 }

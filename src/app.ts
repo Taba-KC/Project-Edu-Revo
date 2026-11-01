@@ -32,6 +32,7 @@ import classSubjectsRouter from './routes/classSubjects';
 
 import managerRouter from './routes/manager';
 import dashboardsRouter from './routes/dashboards';
+import notificationsRouter from './routes/notifications';
 import teacherWorkspaceRouter from './routes/teacherWorkspace';
 
 import learnerWorkspaceRouter from './routes/learnerWorkspace';
@@ -39,6 +40,7 @@ import learnerWorkspaceRouter from './routes/learnerWorkspace';
 import classStreamsRouter from './routes/classStreams';
 import staffAccessRouter from './routes/staffAccess';
 import learnerTransfersRouter from './routes/learnerTransfers';
+import accountReviewsRouter from './routes/accountReviews';
 const app = express();
 
 /**
@@ -68,11 +70,13 @@ app.use(['/auth/people/login','/auth/learners/login','/auth/managers/login'],att
 app.use('/auth/refresh',attemptLimit('refresh-ip',600,900));
 app.use(['/people/onboarding','/learners/onboarding','/schools/activate'],attemptLimit('claim-ip',300,900));
 app.use(authRouter);
+app.use(accountReviewsRouter);
 app.use(managerRouter);
 app.use(staffAccessRouter);
 app.use(learnerTransfersRouter);
 app.use(classStreamsRouter);
 app.use(dashboardsRouter);
+app.use(notificationsRouter);
 app.use(teacherWorkspaceRouter);
 app.use(learnerWorkspaceRouter);
 app.use(healthRouter);

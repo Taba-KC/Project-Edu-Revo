@@ -16,6 +16,8 @@ export const learners = pgTable('learners', {
   username:        text('username').unique(),
   passwordHash:    text('password_hash'),
   accountSetUp:    boolean('account_set_up').notNull().default(false),
+  accountSuspended: boolean('account_suspended').notNull().default(false),
+  authVersion: integer('auth_version').notNull().default(0),
   createdAt:       timestamp('created_at').defaultNow().notNull(),
 }, (table) => [
   unique().on(table.schoolId, table.admissionNumber),
@@ -39,8 +41,8 @@ export const learners = pgTable('learners', {
  * passwordHash — the hashed password. Also null until account setup is complete.
     - Never stored as plain text — when auth is implemented, the plain password will be hashed before it ever touches the database.
  * accountSetUp — a boolean flag.
-    - false when the admin adds the learner, true once the learner completes onboarding.
-    - The app uses this to know whether to show the learner the setup flow or the main app.
+    - false when the admin adds the learner; true after a class manager confirms a claim reference.
+    - Pending credential proposals live in learnerAccountClaims and cannot open schoolwork.
  * createdAt — auto-filled timestamp.
 
     The second argument to pgTable

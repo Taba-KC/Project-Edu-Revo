@@ -8,8 +8,9 @@ import assert from 'node:assert/strict';
 import { and, eq } from 'drizzle-orm';
 import { db,pool } from '../src/db';
 import { circuits,schools,grades,classes,people,learners,subjects,classSubjects,classChapters,chapters,topics,concepts,lessons,lessonConcepts,lessonFeedback,lessonReviewConcepts,homework,questions } from '../src/db/schema';
-import { getPlanning,savePlan,confirmPlan,getHomeworkContext,sendHomework,updateQuestionMemo,TeacherError } from '../src/services/teacherWorkspaceService';
+import { getPlanning,savePlan,confirmPlan,getHomeworkContext,sendHomework,updateQuestionMemo,getSavedQuestionMemoContext,TeacherError } from '../src/services/teacherWorkspaceService';
 import { getDashboard } from '../src/services/dashboardService';
+import { getLearnerAnswer } from '../src/services/learnerWorkspaceService';
 import { generateHomeworkDraft,regenerateMemo } from '../src/services/homeworkAiService';
 async function run(){let checks=0;const rollback=new Error('Rollback teacher workflow fixtures');
  try{await db.transaction(async tx=>{
@@ -61,6 +62,22 @@ async function run(){let checks=0;const rollback=new Error('Rollback teacher wor
  await assert.rejects(sendHomework(caller,plan.id,payload,tx),TeacherError);checks++;
  assert.equal((await getDashboard('learner',learner!.id,school!.id,tx)).subjects[0]!.lessons.find(item=>item.id===plan.id)!.homework.length,1);checks++;
  const future=await savePlan(caller,allocation!.id,{chapterId:chapter!.id,date:'2026-12-31',conceptIds:[second!.id]},tx);await assert.rejects(confirmPlan(caller,future.id,[second!.id],tx,new Date('2026-10-10')),TeacherError);checks++;
+ await updateQuestionMemo(caller,savedQuestion!.id,'Late worked answer for previous homework',tx);
+ assert.equal((await getDashboard('staff',teacher!.id,school!.id,tx)).subjects[0]!.lessons.find(item=>item.id===plan.id)!.homework[0]!.questions[0]!.memo,'Late worked answer for previous homework');checks++;
+ const savedContext=await getSavedQuestionMemoContext(caller,savedQuestion!.id,tx);
+ assert.equal(savedContext.body,'Explain inertia');assert.equal(savedContext.gradeNumber,11);checks++;
+ await assert.rejects(getSavedQuestionMemoContext(outsider,savedQuestion!.id,tx),TeacherError);checks++;
+ const oldAIKey=process.env.OPENAI_API_KEY;process.env.OPENAI_API_KEY='mock-only';
+ try {
+  const generated=await regenerateMemo(savedContext.gradeNumber,savedContext.conceptName,savedContext.body,savedContext.memo??'','Show working',async(_url,options)=>{
+   const payload=JSON.parse(String(options!.body));const input=JSON.parse(payload.input);assert.equal(input.question,'Explain inertia');assert.equal(payload.store,false);
+   return new Response(JSON.stringify({status:'completed',output:[{content:[{type:'output_text',text:JSON.stringify({memo:'AI worked answer draft'})}]}]}));
+  });
+  assert.equal(generated.memo,'AI worked answer draft');assert.equal((await tx.select().from(questions).where(eq(questions.id,savedQuestion!.id)))[0]!.memo,'Late worked answer for previous homework','AI generation must not publish its draft');checks++;
+ } finally {if(oldAIKey===undefined)delete process.env.OPENAI_API_KEY;else process.env.OPENAI_API_KEY=oldAIKey;}
+ const learnerCaller={accountId:learner!.id,accountType:'learner',schoolId:school!.id};
+ await assert.rejects(getLearnerAnswer(learnerCaller,savedQuestion!.id,tx,new Date('2029-12-31T12:00:00Z')),TeacherError);checks++;
+ assert.equal((await getLearnerAnswer(learnerCaller,savedQuestion!.id,tx,new Date(payload.dueDate))).memo,'Late worked answer for previous homework');checks++;
  const [nextChapter]=await tx.insert(chapters).values({subjectId:subject!.id,gradeNumber:11,name:'Next chapter',orderIndex:2}).returning();
  const [nextTopic]=await tx.insert(topics).values({chapterId:nextChapter!.id,name:'Next topic',orderIndex:1}).returning();
  const later=await tx.insert(concepts).values(Array.from({length:12},(_,i)=>({chapterId:nextChapter!.id,topicId:nextTopic!.id,name:'Later '+i,orderIndex:i}))).returning();

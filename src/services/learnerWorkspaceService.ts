@@ -1,7 +1,7 @@
 /** The learner library is scoped by the authenticated account's current class, never a client-supplied class ID. */
 import { and, eq, inArray, asc, or } from 'drizzle-orm';
 import { db } from '../db';
-import { learners, schools, classes, grades, classSubjects, subjects, chapters, topics, concepts, lessons, lessonConcepts, lessonFeedback, homework, questions } from '../db/schema';
+import { learners, schools, classes, grades, classSubjects, subjects, chapters, topics, concepts, lessons, lessonConcepts, lessonFeedback, homework, questions, learnerAccountClaims } from '../db/schema';
 import type { AuthPayload } from '../middleware/auth';
 import { TeacherError } from './teacherWorkspaceService';
 import { getCurriculum } from './curriculumService';
@@ -63,11 +63,28 @@ export async function getLearnerWorkspace(caller: AuthPayload, database: Databas
           }) })),
         homework: activities.map((activity, index) => ({ id: activity.id, activityNumber: index + 1, lessonId: activity.lessonId, dueDate: activity.dueDate, ...answerRelease(activity, now), questions: activityQuestions.filter(question => question.homeworkId === activity.id) })) });
     }
-    return { profile, subjects: result };
+    if (caller.learnerAccess === 'restricted') {
+      const [claim] = await tx.select().from(learnerAccountClaims).where(and(eq(learnerAccountClaims.id, caller.claimId ?? -1), eq(learnerAccountClaims.learnerId, caller.accountId), eq(learnerAccountClaims.kind, 'password'), eq(learnerAccountClaims.status, 'pending')));
+      if (!claim) throw new TeacherError('Password request not found.', 403);
+      profile.username = claim.username;
+      for (const subject of result) {
+        const pinned = claim.visibleContent.find(item => item.classSubjectId === subject.id);
+        const sourcePlans = await tx.select().from(lessons).where(eq(lessons.classSubjectId, subject.id)).orderBy(lessons.createdAt, lessons.id);
+        const lessonId = pinned?.lessonId ?? sourcePlans.find(item => item.createdAt >= claim.createdAt && ['planned', 'confirmed'].includes(item.status))?.id;
+        const sourceActivities = sourcePlans.length ? await tx.select().from(homework).where(inArray(homework.lessonId, sourcePlans.map(item => item.id))).orderBy(homework.createdAt, homework.id) : [];
+        const homeworkId = pinned?.homeworkId ?? sourceActivities.find(item => item.createdAt >= claim.createdAt)?.id;
+        subject.syllabus = [];
+        subject.lessons = subject.lessons.filter(item => item.id === lessonId).map(item => ({ ...item, canRespond: false, concepts: item.concepts.map(concept => ({ ...concept, answers: concept.answers.map(() => null) })) }));
+        subject.homework = subject.homework.filter(item => item.id === homeworkId).map(item => ({ ...item, canReveal: false, releaseAt: null }));
+      }
+      return { profile, subjects: result, accountReview: { access: 'restricted' as const, reference: claim.reference } };
+    }
+    return { profile, subjects: result, accountReview: null };
   }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
 }
 
 export async function getLearnerAnswer(caller: AuthPayload, questionId: number, database: Database = db, now = new Date()) {
+  if (caller.learnerAccess && caller.learnerAccess !== 'active') throw new TeacherError('Confirm your account reference before viewing worked answers.', 403);
   return database.transaction(async tx => {
     const enrolled=await learnerSubjectIds(tx,caller);
     const profile = await learnerScope(tx, caller);

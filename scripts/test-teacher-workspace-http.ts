@@ -14,6 +14,8 @@ async function run(){let checks=0;const server=app.listen(0,'127.0.0.1');await n
  const request=(path:string,token?:string,method='GET',body?:unknown)=>fetch(base+path,{method,headers:{...(token?{Authorization:'Bearer '+token}:{}),'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
  try{
  assert.equal((await request('/staff/class-subjects/1/planning')).status,401);checks++;
+ assert.equal((await request('/staff/questions/1/generate-memo',undefined,'POST',{})).status,401);checks++;
+ assert.equal((await request('/staff/questions/1/generate-memo',generateAccessToken(-1,'learner',-1),'POST',{})).status,403);checks++;
  assert.equal((await request('/staff/class-subjects/1/lesson-feedback')).status,401);checks++;
  assert.equal((await request('/staff/lessons/1/review-concepts',undefined,'POST',{conceptId:1})).status,401);checks++;
  assert.equal((await request('/staff/class-subjects/1/planning',generateAccessToken(-1,'learner',-1))).status,403);checks++;
@@ -35,6 +37,7 @@ async function run(){let checks=0;const server=app.listen(0,'127.0.0.1');await n
   assert.equal((await request('/staff/lessons/2147483647/homework',assigned.token,'POST',{dueDate:'2030-01-01T12:00:00Z',memoReleaseType:'immediately',questions:[{conceptId:1,body:'Question'}]})).status,404);checks++;
   assert.equal((await request('/lessons/2147483647/homework',assigned.token,'POST',{})).status,410);checks++;
   assert.equal((await request('/staff/questions/2147483647/memo',assigned.token,'PATCH',{memo:'Answer'})).status,404);checks++;
+  assert.equal((await request('/staff/questions/2147483647/generate-memo',assigned.token,'POST',{})).status,404);checks++;
  }
  const learnerToken=generateAccessToken(-1,'learner',-1);
  assert.equal((await request('/lesson-feedback',learnerToken,'POST',{lessonConceptId:1,reaction:'not_sure'})).status,400);checks++;

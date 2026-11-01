@@ -11,9 +11,7 @@ import {
   addLearner,
   getLearnersByClass,
   findLearnerForOnboarding,
-  completeLearnerOnboarding,
 } from '../services/learnerService';
-import bcrypt from 'bcrypt';
 import { db } from '../db';
 import { classes, grades } from '../db/schema';
 import { and,eq } from 'drizzle-orm';
@@ -28,14 +26,6 @@ const addLearnerSchema = z.object({
   surname:         z.string().min(1),
   admissionNumber: z.string().min(1),
   classId:         z.number().int().positive(),
-});
-
-const onboardingSchema = z.object({
-  schoolCode:      z.string().min(1),
-  admissionNumber: z.string().min(1),
-  initials:        z.string().min(1),
-  username:        z.string().min(3),
-  password:        z.string().min(6),
 });
 
 // Add a learner to a class
@@ -101,24 +91,5 @@ router.post('/learners/onboarding/lookup', async (req, res) => {
   return res.json({ firstName: learner.firstName, surname: learner.surname });
 });
 
-// Learner onboarding — claim account and set username + password
-/**
- * POST /learners/onboarding: Create data or run the submitted operation.
- */
-router.post('/learners/onboarding', async (req, res) => {
-  const result = onboardingSchema.safeParse(req.body);
-  if (!result.success) return res.status(400).json({ error: result.error.flatten() });
-
-  const { schoolCode, admissionNumber, initials, username, password } = result.data;
-
-  const learner = await findLearnerForOnboarding(schoolCode, admissionNumber, initials);
-  if (!learner) return res.status(400).json({ error: 'No matching record found' });
-
-  if (learner.accountSetUp) return res.status(400).json({ error: 'Account already set up' });
-
-  const passwordHash = await bcrypt.hash(password, 10);
-  const updated = await completeLearnerOnboarding(learner.id, username, passwordHash);
-  return res.status(200).json({ message: 'Account set up successfully', id: updated.id });
-});
-
+// Credential proposals are handled by accountReviewsRouter; activation requires manager review.
 export default router;

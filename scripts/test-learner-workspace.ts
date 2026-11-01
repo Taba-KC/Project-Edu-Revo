@@ -6,7 +6,7 @@ import { db, pool } from '../src/db';
 import { circuits, schools, grades, classes, people, learners, subjects, classSubjects, chapters, topics, concepts, lessons, lessonConcepts, homework, questions, lessonFeedback, lessonReviewConcepts } from '../src/db/schema';
 import { StreamChoiceError } from '../src/services/classStreamService';
 import { getLearnerWorkspace, getLearnerAnswer, answerRelease } from '../src/services/learnerWorkspaceService';
-import { submitLearningGoalFeedback } from '../src/services/lessonResponseService';
+import { submitLearningGoalFeedback, submitLearningGoalFeedbackBatch } from '../src/services/lessonResponseService';
 import { getLessonFeedback, addLessonConceptToNextLesson } from '../src/services/teacherLessonFeedbackService';
 import { getPlanning, savePlan, TeacherError } from '../src/services/teacherWorkspaceService';
 import { goalUnderstanding } from '../src/services/lessonGoals';
@@ -54,6 +54,14 @@ async function run() {
       await submitLearningGoalFeedback(caller, links[1]!.id, { goalIndex: 0, answer: 'yes' }, tx);
       const saved = await tx.select().from(lessonFeedback).where(and(eq(lessonFeedback.lessonConceptId, links[0]!.id), eq(lessonFeedback.learnerID, caller.accountId)));
       assert.equal(saved.length, 1); assert.equal(saved[0]!.goalResponses.length, 2);
+      const batch = await submitLearningGoalFeedbackBatch(caller, links[0]!.id, [{ goalIndex: 0, answer: 'yes' }, { goalIndex: 1, answer: 'yes' }], tx);
+      assert.deepEqual(batch.goalResponses.map(item => item.answer), ['yes', 'yes']);
+      await assert.rejects(submitLearningGoalFeedbackBatch(caller, links[0]!.id, [{ goalIndex: 0, answer: 'no' }, { goalIndex: 2, answer: 'no' }], tx));
+      const [afterFailedBatch] = await tx.select().from(lessonFeedback).where(and(eq(lessonFeedback.lessonConceptId, links[0]!.id), eq(lessonFeedback.learnerID, caller.accountId)));
+      assert.deepEqual(afterFailedBatch!.goalResponses.map(item => item.answer), ['yes', 'yes'], 'An invalid goal must roll back every answer in the submission');
+      await assert.rejects(submitLearningGoalFeedbackBatch(outsider, links[0]!.id, [{ goalIndex: 0, answer: 'yes' }], tx));
+      await assert.rejects(submitLearningGoalFeedbackBatch(caller, links[0]!.id, [{ goalIndex: 0, answer: 'yes' }, { goalIndex: 0, answer: 'no' }], tx));
+      await submitLearningGoalFeedbackBatch(caller, links[0]!.id, [{ goalIndex: 0, answer: 'no' }, { goalIndex: 1, answer: 'no' }], tx);
       const feedback = await getLessonFeedback(staff, allocation!.id, tx);
       assert.equal(feedback[0]!.concepts[0]!.id, conceptRows[0]!.id);
       assert.equal(feedback[0]!.concepts[0]!.noCount, 2);
@@ -87,6 +95,7 @@ async function run() {
       assert.deepEqual(review!.reviewGoals, ['Goal 0 A', 'Goal 0 B']);
       assert.equal((await tx.select().from(lessonReviewConcepts).where(eq(lessonReviewConcepts.classSubjectId, allocation!.id))).length, 0);
       await assert.rejects(submitLearningGoalFeedback(caller, links[0]!.id, { goalIndex: 0, answer: 'yes' }, tx), (error: unknown) => error instanceof TeacherError || error instanceof StreamChoiceError);
+      await assert.rejects(submitLearningGoalFeedbackBatch(caller, links[0]!.id, [{ goalIndex: 0, answer: 'yes' }], tx), (error: unknown) => error instanceof TeacherError || error instanceof StreamChoiceError);
       await submitClosedReview();
       async function submitClosedReview() {
         await addLessonConceptToNextLesson(staff, source!.id, conceptRows[0]!.id, tx, release);
@@ -109,8 +118,10 @@ async function run() {
     assert.equal((await fetch(base + '/learners/me/workspace')).status, 401);
     const staffToken = jwt.sign({ accountId: -1, accountType: 'person', role: 'teacher', schoolId: -1 }, process.env.JWT_SECRET!);
     assert.equal((await fetch(base + '/learners/me/workspace', { headers: { Authorization: `Bearer ${staffToken}` } })).status, 403);
+    // Nonexistent learner tokens now fail before payload validation. Valid-session validation is covered in test-account-reviews.
     const token = jwt.sign({ accountId: -1, accountType: 'learner', schoolId: -1 }, process.env.JWT_SECRET!);
-    assert.equal((await fetch(base + '/learners/me/lesson-concepts/1/goals', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ goalIndex: 0, answer: 'maybe' }) })).status, 400);
+    for (const payload of [{ answers: [] }, { answers: [{ goalIndex: 0, answer: 'yes' }, { goalIndex: 0, answer: 'no' }] }, { answers: [{ goalIndex: 0, answer: 'maybe' }] }]) assert.equal((await fetch(base + '/learners/me/lesson-concepts/1/feedback', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })).status, 401);
+    assert.equal((await fetch(base + '/learners/me/lesson-concepts/1/goals', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ goalIndex: 0, answer: 'maybe' }) })).status, 401);
   } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
   console.log('Learner integration checks passed: scoped library, frozen goals, Yes/No updates, teacher aggregation, review focus, answer release boundaries and HTTP guards. All database fixtures rolled back.');
 }

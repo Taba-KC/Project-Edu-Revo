@@ -22,9 +22,11 @@
     "test:lesson-feedback": "tsx scripts/test-lesson-feedback.ts",
     "test:teacher-workspace-http": "tsx scripts/test-teacher-workspace-http.ts",
     "test:learner-workspace": "tsx scripts/test-learner-workspace.ts",
+    "test:notifications": "tsx scripts/test-notifications.ts",
     "test:school-workflows": "tsx scripts/test-school-workflows.ts",
     "test:lifecycle-integrity": "tsx scripts/test-lifecycle-integrity.ts",
-    "test:security-hardening": "tsx scripts/test-security-hardening.ts"
+    "test:security-hardening": "tsx scripts/test-security-hardening.ts",
+    "test:account-reviews": "tsx scripts/test-account-reviews.ts"
   },
   "repository": {
     "type": "git",

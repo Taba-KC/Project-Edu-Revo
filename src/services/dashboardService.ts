@@ -5,7 +5,7 @@
  */
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db';
-import { people, learners, schools, grades, classes, subjects, classSubjects, classChapters, chapters, topics, lessons, lessonConcepts, concepts, homework, questions, lessonFeedback, questionFeedback, announcements } from '../db/schema';
+import { people, learners, schools, grades, classes, subjects, classSubjects, classChapters, chapters, topics, lessons, lessonConcepts, concepts, homework, questions, lessonFeedback, questionFeedback, announcements, learnerAccountClaims } from '../db/schema';
 import { getCurriculum } from './curriculumService';
 import { learnerSubjectIds } from './classStreamService';
 export class DashboardError extends Error { constructor(message: string, public status = 404) { super(message); } }
@@ -51,6 +51,7 @@ export async function getDashboard(role: DashboardRole, accountId: number, schoo
       };
       const curriculum = library.chapters.filter(chapter => canTeach(chapter.id));
       const history = lessonRows.filter(lesson => lesson.classSubjectId === row.id && library.chapters.some(chapter => chapter.id === lesson.chapterId) && canTeach(lesson.chapterId));
+      const numberedHomework = homeworkRows.filter(activity => lessonRows.some(lesson => lesson.id === activity.lessonId && lesson.classSubjectId === row.id && lesson.status === 'confirmed')).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id - b.id);
       const taughtIds = new Set(lessonItems.filter(item => history.some(lesson => lesson.id === item.lessonId && lesson.status === 'confirmed')).map(item => item.conceptId));
       const chapterProgress = curriculum.map(chapter => {
         const items = chapter.topics.flatMap(topic => topic.concepts);
@@ -63,7 +64,7 @@ export async function getDashboard(role: DashboardRole, accountId: number, schoo
         curriculum: chapterProgress,
         lessons: history.map(lesson => ({ id: lesson.id, lessonNumber: lesson.lessonNumber, date: lesson.date, status: lesson.status, chapterName: library.chapters.find(chapter => chapter.id === lesson.chapterId)?.name ?? 'Chapter',
           concepts: lessonItems.filter(item => item.lessonId === lesson.id).map(item => ({ id: item.conceptId, name: lesson.status === 'confirmed' ? item.teachingBrief?.conceptName ?? item.name : item.name, ...(role === 'staff' ? { reviewGoals: item.reviewGoals, teachingBrief: lesson.status === 'planned' ? { conceptName: item.name, prerequisites: item.prerequisites, learningOutcomes: item.learningOutcomes } : item.teachingBrief ?? { conceptName: item.name, prerequisites: item.prerequisites, learningOutcomes: item.learningOutcomes } } : {}) })),
-          homework: homeworkRows.filter(hw => hw.lessonId === lesson.id && lesson.status === 'confirmed').map(hw => ({ id: hw.id, dueDate: hw.dueDate,
+          homework: homeworkRows.filter(hw => hw.lessonId === lesson.id && lesson.status === 'confirmed').map(hw => ({ id: hw.id, activityNumber: numberedHomework.findIndex(activity => activity.id === hw.id) + 1, dueDate: hw.dueDate,
             questions: questionRows.filter(question => question.homeworkId === hw.id).map(question => ({ id: question.id, body: question.body, conceptId: question.conceptId, ...(role === 'staff' ? { memo: question.hasMemo } : {}) })) })) })) });
     }
     type Task = { id: string; classSubjectId: number; lessonId: number; subjectName: string; className: string; kind: string; date: string };
@@ -89,6 +90,8 @@ export async function getDashboard(role: DashboardRole, accountId: number, schoo
     const relevantClasses = role === 'learner' ? [learnerClass!] : allocations.filter(row => visible.some(subject => subject.id === row.id)).map(row => ({ id: row.classId, gradeId: row.gradeId, streamId: row.streamId }));
     const notices = (await tx.select({ id: announcements.id, title: announcements.title, body: announcements.body, audienceType: announcements.audienceType, audienceId: announcements.audienceId, createdAt: announcements.createdAt }).from(announcements).where(eq(announcements.schoolId, schoolId)).orderBy(desc(announcements.createdAt)))
       .filter(notice => notice.audienceType === 'all' || relevantClasses.some(cls => (notice.audienceType === 'class' && notice.audienceId === cls.id) || (notice.audienceType === 'grade' && notice.audienceId === cls.gradeId) || (notice.audienceType === 'stream' && cls.streamId !== null && notice.audienceId === cls.streamId)));
-    return { profile: { ...account, schoolName: school.name, className: learnerClass?.name ?? null, gradeNumber: learnerClass?.gradeNumber ?? null }, subjects: subjectList, needsYou, waitingForYou, comingUp, announcements: notices };
+    const managedClasses = role === 'staff' ? await tx.select({ id: classes.id, name: classes.name }).from(classes).innerJoin(grades, eq(grades.id, classes.gradeId)).where(and(eq(classes.classTeacherId, accountId), eq(grades.schoolId, schoolId))) : [];
+    const pendingAccounts = managedClasses.length ? await tx.selectDistinct({ id: learners.id, confirmed: learners.accountSetUp }).from(learners).innerJoin(learnerAccountClaims, eq(learnerAccountClaims.learnerId, learners.id)).where(and(eq(learners.schoolId, schoolId), inArray(learners.classId, managedClasses.map(item => item.id)), eq(learnerAccountClaims.status, 'pending'))) : [];
+    return { ...(role === 'staff' ? { aiAvailable: !!process.env.OPENAI_API_KEY, managedClasses, pendingAccountCount: pendingAccounts.length, pendingClaimCount: pendingAccounts.filter(item => !item.confirmed).length, pendingPasswordCount: pendingAccounts.filter(item => item.confirmed).length } : {}), profile: { ...account, schoolName: school.name, className: learnerClass?.name ?? null, gradeNumber: learnerClass?.gradeNumber ?? null }, subjects: subjectList, needsYou, waitingForYou, comingUp, announcements: notices };
   }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
 }

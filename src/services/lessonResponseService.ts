@@ -87,3 +87,13 @@ export async function submitLearningGoalFeedback(caller: AuthPayload, lessonConc
     return { lessonConceptId, goalResponses };
   });
 }
+
+/** Submit the concept's selected answers together; any failed goal rolls the whole submission back. */
+export async function submitLearningGoalFeedbackBatch(caller: AuthPayload, lessonConceptId: number, answers: { goalIndex: number; answer: 'yes' | 'no' }[], database: Database = db) {
+  if (!Array.isArray(answers) || !answers.length || answers.length > 5 || new Set(answers.map(item => item.goalIndex)).size !== answers.length) throw new TeacherError('Choose valid learning goal answers.');
+  return database.transaction(async tx => {
+    let result: Awaited<ReturnType<typeof submitLearningGoalFeedback>> | undefined;
+    for (const answer of answers) result = await submitLearningGoalFeedback(caller, lessonConceptId, answer, tx);
+    return result!;
+  });
+}

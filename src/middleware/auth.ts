@@ -8,6 +8,7 @@ import { and, eq } from 'drizzle-orm';
  */
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { learnerSession, AccountReviewError } from '../services/accountReviewService';
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 
@@ -16,6 +17,10 @@ export interface AuthPayload {
   accountType: string;
   schoolId:    number | null;
   role?:       string;
+  claimId?: number | null;
+  sessionVersion?: number;
+  learnerAccess?: 'pending' | 'restricted' | 'active';
+  claimReference?: string | null;
 }
 
 declare global {
@@ -45,8 +50,22 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       payload.role = current.role;
     }
     req.caller = payload;
+    if (payload.accountType === 'learner') {
+      const session = await learnerSession(payload);
+      payload.learnerAccess = session.access as AuthPayload['learnerAccess'];
+      payload.claimReference = session.reference;
+      const path = req.originalUrl.split('?')[0];
+      if (session.access === 'pending') {
+        if (req.method === 'GET' && path === '/learners/me/learning-setup') return res.json({ status: 'awaiting-confirmation', reference: session.reference });
+        return res.status(403).json({ error: 'Your account is awaiting confirmation by your class manager.' });
+      }
+      // Restricted candidate credentials get read-only, server-filtered learning content.
+      if (session.access === 'restricted' && !(req.method === 'GET' && ['/learners/me/learning-setup', '/learners/me/workspace', '/learners/me/notifications'].includes(path))) return res.status(403).json({ error: 'Ask your class manager to confirm your password reference before using this feature.' });
+      if (session.access === 'restricted' && path === '/learners/me/notifications') return res.json([]);
+    }
     return next();
-  } catch {
+  } catch (error) {
+    if (error instanceof AccountReviewError) return res.status(error.status).json({ error: error.message });
     return res.status(401).json({ error: 'Invalid or expired token' });
   }
 }

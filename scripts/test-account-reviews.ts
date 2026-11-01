@@ -1,0 +1,141 @@
+/** Real service/HTTP checks share a rollback transaction; no school or credentials persist. */
+import 'dotenv/config';
+import assert from 'node:assert/strict';
+import bcrypt from 'bcrypt';
+import { and, eq } from 'drizzle-orm';
+import { db, pool } from '../src/db';
+import { circuits, schools, grades, classes, people, learners, learnerAccountClaims, refreshTokens, subjects, classSubjects, chapters, topics, concepts, lessons, lessonConcepts, homework, questions } from '../src/db/schema';
+import { submitAccountClaim, managedAccounts, reviewAccount, learnerSession, AccountReviewError } from '../src/services/accountReviewService';
+import { generateAccessToken, loginLearner, refreshAccessToken } from '../src/services/authService';
+import { getLearnerWorkspace } from '../src/services/learnerWorkspaceService';
+import { staffAccess } from '../src/services/staffAccessService';
+import app from '../src/app';
+let checks = 0;
+const check = (value: unknown, message?: string) => { assert.ok(value, message); checks++; };
+async function run() {
+  const rollback = new Error('Rollback account-review fixtures');
+  try { await db.transaction(async tx => {
+    const key = `review-${Date.now()}`;
+    const [circuit] = await tx.select().from(circuits).limit(1);
+    const [school] = await tx.insert(schools).values({ circuitId: circuit!.id, name: key, activationCode: key, code: key }).returning();
+    const [grade] = await tx.select().from(grades).where(and(eq(grades.schoolId, school!.id), eq(grades.number, 11)));
+    const staff = await tx.insert(people).values(['Manager', 'Other'].map(surname => ({ title: 'Ms', firstName: 'Test', surname, staffNumber: surname, schoolId: school!.id, accountSetUp: true }))).returning();
+    const [cls, otherClass] = await tx.insert(classes).values([{ gradeId: grade!.id, name: '11A', classTeacherId: staff[0]!.id }, { gradeId: grade!.id, name: '11B', classTeacherId: staff[1]!.id }]).returning();
+    const originalPassword = 'original-password';
+    const [pending, active, outside] = await tx.insert(learners).values([
+      { schoolId: school!.id, classId: cls!.id, firstName: 'New', surname: 'Learner', admissionNumber: '001' },
+      { schoolId: school!.id, classId: cls!.id, firstName: 'Active', surname: 'Learner', admissionNumber: '002', username: key, passwordHash: await bcrypt.hash(originalPassword, 10), accountSetUp: true },
+      { schoolId: school!.id, classId: otherClass!.id, firstName: 'Other', surname: 'Learner', admissionNumber: '003' },
+    ]).returning();
+    const [subject] = await tx.insert(subjects).values({ name: key }).returning();
+    const [allocation] = await tx.insert(classSubjects).values({ classId: cls!.id, subjectId: subject!.id, personId: staff[0]!.id }).returning();
+    const [chapter] = await tx.insert(chapters).values({ subjectId: subject!.id, gradeNumber: 11, name: 'Chapter', orderIndex: 1 }).returning();
+    const [topic] = await tx.insert(topics).values({ chapterId: chapter!.id, name: 'Topic', orderIndex: 1 }).returning();
+    const [concept] = await tx.insert(concepts).values({ chapterId: chapter!.id, topicId: topic!.id, name: 'Concept', orderIndex: 1, learningOutcomes: ['Goal'], prerequisites: ['Prerequisite'] }).returning();
+    const source = await tx.insert(lessons).values([0, 1, 2].map(index => ({ classSubjectId: allocation!.id, chapterId: chapter!.id, date: '2026-10-31', status: index === 2 ? 'planned' : 'confirmed', createdAt: new Date(Date.now() - (3 - index) * 3600000) }))).returning();
+    await tx.insert(lessonConcepts).values(source.map(lesson => ({ lessonId: lesson.id, conceptId: concept!.id })));
+    const activities = await tx.insert(homework).values(source.slice(0, 2).map((lesson, index) => ({ lessonId: lesson.id, dueDate: new Date(), memoReleaseType: 'immediately', createdAt: new Date(Date.now() - (2 - index) * 3600000) }))).returning();
+    await tx.insert(questions).values(activities.map(activity => ({ homeworkId: activity.id, conceptId: concept!.id, body: 'Private question', memo: 'Private memo', orderIndex: 1 })));
+    const methods = ['select', 'insert', 'update', 'delete', 'execute', 'transaction'] as const;
+    const originals = new Map(methods.map(method => [method, (db as any)[method]]));
+    for (const method of methods) (db as any)[method] = (tx as any)[method].bind(tx);
+    const server = app.listen(0, '127.0.0.1'); await new Promise<void>(resolve => server.once('listening', resolve));
+    try {
+      const base = `http://127.0.0.1:${(server.address() as import('node:net').AddressInfo).port}`;
+      const request = (path: string, token?: string, body?: unknown) => fetch(base + path, { method: body === undefined ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+      const manager = { accountId: staff[0]!.id, accountType: 'person', schoolId: school!.id, role: 'teacher' };
+      const wrongManager = { ...manager, accountId: staff[1]!.id };
+      const managerToken = generateAccessToken(manager.accountId, 'person', school!.id, 'teacher');
+      const input = { schoolCode: key, admissionNumber: '001', initials: 'NL', username: `${key}-first`, password: 'first-password' };
+      check((await request('/staff/me/accounts')).status === 401);
+      check((await managedAccounts(manager)).classes.length === 1);
+      check((await staffAccess(wrongManager)).canManageAccounts, 'A class manager needs no subject allocation to access the book');
+      const claim1 = await submitAccountClaim(input, 'claim');
+      const claim2 = await submitAccountClaim({ ...input, username: `${key}-second`, password: 'second-password' }, 'claim');
+      check(claim1.reference !== claim2.reference && /^[A-F0-9]{4}(-[A-F0-9]{4}){2}$/.test(claim1.reference));
+      await assert.rejects(submitAccountClaim({ ...input, username: `${key}-third` }, 'claim'), (err: unknown) => err instanceof AccountReviewError && err.status === 429); checks++;
+      const pendingTokens = await loginLearner(`${key}-second`, 'second-password');
+      const pendingView = await request('/learners/me/learning-setup', pendingTokens.accessToken);
+      const waiting = await pendingView.json() as any;
+      check(waiting.status === 'awaiting-confirmation' && waiting.reference === claim2.reference);
+      for (const path of ['/learners/me/workspace', '/learners/me/dashboard', '/learners/me/notifications', '/lessons/1/preview']) check((await request(path, pendingTokens.accessToken)).status === 403, `Pending cannot read ${path}`);
+      check((await request('/learners/me/lesson-concepts/1/feedback', pendingTokens.accessToken, { answers: [{ goalIndex: 0, answer: 'yes' }] })).status === 403);
+      const list = await managedAccounts(manager);
+      check(list.pendingCount === 1 && list.accounts.find(item => item.id === pending!.id)?.claims.length === 2, 'Badge counts learners, not references');
+      check(!JSON.stringify(list).includes('passwordHash') && !JSON.stringify(list).includes('first-password'));
+      await assert.rejects(reviewAccount(wrongManager, pending!.id, 'confirm', claim2.reference)); checks++;
+      await assert.rejects(reviewAccount(manager, outside!.id, 'revoke')); checks++;
+      await assert.rejects(reviewAccount(manager, pending!.id, 'confirm', 'FFFF-FFFF-FFFF')); checks++;
+      check((await request(`/staff/me/accounts/${pending!.id}/review`, managerToken, { action: 'confirm', reference: claim2.reference })).status === 200);
+      check((await request('/learners/me/workspace', pendingTokens.accessToken)).status === 200, 'Chosen pending session becomes active');
+      check((await request('/staff/me/accounts', pendingTokens.accessToken)).status === 403, 'A valid learner cannot review claims');
+      for (const answers of [[], [{ goalIndex: 0, answer: 'maybe' }], [{ goalIndex: 0, answer: 'yes' }, { goalIndex: 0, answer: 'no' }]]) check((await request('/learners/me/lesson-concepts/1/feedback', pendingTokens.accessToken, { answers })).status === 400);
+      check((await request('/learners/me/notifications/read', pendingTokens.accessToken, { ids: [] })).status === 400);
+      await assert.rejects(loginLearner(`${key}-first`, 'first-password')); checks++;
+      const [discarded] = await tx.select().from(learnerAccountClaims).where(eq(learnerAccountClaims.id, claim1.id));
+      check(discarded!.passwordHash === null && discarded!.username === null && discarded!.status === 'revoked');
+      check((await managedAccounts(manager)).pendingCount === 0);
+
+      const oldTokens = await loginLearner(key, originalPassword);
+      const [futureSubject] = await tx.insert(subjects).values({ name: key + '-future' }).returning();
+      const [emptyAllocation] = await tx.insert(classSubjects).values({ classId: cls!.id, subjectId: futureSubject!.id, personId: staff[0]!.id }).returning();
+      const [futureChapter] = await tx.insert(chapters).values({ subjectId: futureSubject!.id, gradeNumber: 11, name: 'Future chapter', orderIndex: 1 }).returning();
+      const resetInput = { schoolCode: key, admissionNumber: '002', initials: 'AL', username: key, password: 'replacement-password' };
+      const reset = await submitAccountClaim(resetInput, 'password');
+      const candidateTokens = await loginLearner(key, 'replacement-password');
+      check((await request('/learners/me/workspace', oldTokens.accessToken)).status === 200, 'Original owner stays active during review');
+      check((await learnerSession({ accountId: active!.id, accountType: 'learner', schoolId: school!.id, claimId: reset.id })).access === 'restricted');
+      const restricted = await (await request('/learners/me/workspace', candidateTokens.accessToken)).json() as any;
+      check(restricted.accountReview.reference === reset.reference);
+      check(restricted.subjects[0].syllabus.length === 0 && restricted.subjects[0].lessons.length === 1 && restricted.subjects[0].lessons[0].id === source[2]!.id);
+      check(restricted.subjects[0].homework.length === 1 && restricted.subjects[0].homework[0].id === activities[1]!.id && !restricted.subjects[0].homework[0].canReveal);
+      check(!JSON.stringify(restricted).includes('Private memo'));
+      const later = await tx.insert(lessons).values({ classSubjectId: allocation!.id, chapterId: chapter!.id, date: '2026-11-01', status: 'planned' }).returning();
+      const firstAfter = await tx.insert(lessons).values([1, 2].map(index => ({ classSubjectId: emptyAllocation!.id, chapterId: futureChapter!.id, date: '2026-11-01', status: 'confirmed', createdAt: new Date(Date.now() + index * 60000) }))).returning();
+      const firstActivities = await tx.insert(homework).values(firstAfter.map((lesson, index) => ({ lessonId: lesson.id, dueDate: new Date(), memoReleaseType: 'immediately', createdAt: new Date(Date.now() + (index + 1) * 60000) }))).returning();
+      const stillPinned = await getLearnerWorkspace({ accountId: active!.id, accountType: 'learner', schoolId: school!.id, claimId: reset.id, learnerAccess: 'restricted' });
+      check(stillPinned.subjects[0]!.lessons[0]!.id !== later[0]!.id, 'Restricted lessons stay pinned');
+      const futureView = stillPinned.subjects.find(item => item.id === emptyAllocation!.id)!;
+      check(futureView.lessons.length === 1 && futureView.lessons[0]!.id === firstAfter[0]!.id, 'Only the first lesson after the request is available when none existed');
+      check(futureView.homework.length === 1 && futureView.homework[0]!.id === firstActivities[0]!.id, 'Only the first subsequent homework is available');
+      for (const path of ['/learners/me/dashboard', '/learners/me/questions/1/answer', '/lessons/1/preview']) check((await request(path, candidateTokens.accessToken)).status === 403, `Restricted cannot bypass via ${path}`);
+      check((await request('/learners/me/notifications', candidateTokens.accessToken)).status === 200);
+      check((await request('/learners/me/lesson-concepts/1/feedback', candidateTokens.accessToken, { answers: [{ goalIndex: 0, answer: 'yes' }] })).status === 403);
+      check((await managedAccounts(manager)).accounts.find(item => item.id === active!.id)?.claims.some(item => item.reference === reset.reference));
+      await reviewAccount(manager, active!.id, 'confirm', reset.reference);
+      check((await request('/learners/me/workspace', candidateTokens.accessToken)).status === 200);
+      check((await request('/learners/me/workspace', oldTokens.accessToken)).status === 401, 'Previous owner session revoked after selected reset');
+      await assert.rejects(refreshAccessToken(oldTokens.refreshToken)); checks++;
+      await assert.rejects(loginLearner(key, originalPassword)); checks++;
+      check((await (await request('/learners/me/workspace', candidateTokens.accessToken)).json() as any).accountReview === null);
+      await reviewAccount(manager, active!.id, 'suspend');
+      check((await request('/learners/me/workspace', candidateTokens.accessToken)).status === 403);
+      await assert.rejects(loginLearner(key, 'replacement-password')); checks++;
+      await reviewAccount(manager, active!.id, 'resume');
+      check((await request('/learners/me/workspace', candidateTokens.accessToken)).status === 401, 'Old sessions do not revive after resume');
+      const resumed = await loginLearner(key, 'replacement-password');
+      check((await request('/learners/me/workspace', resumed.accessToken)).status === 200);
+      await reviewAccount(manager, active!.id, 'revoke');
+      check((await request('/learners/me/workspace', resumed.accessToken)).status === 401);
+      check(!(await managedAccounts(manager)).accounts.some(item => item.id === active!.id));
+      const reClaim = await submitAccountClaim({ ...resetInput, password: 'reclaimed-password' }, 'claim');
+      check(reClaim.reference !== reset.reference);
+      await reviewAccount(manager, pending!.id, 'revoke');
+      await assert.rejects(submitAccountClaim(input, 'claim'), (err: unknown) => err instanceof AccountReviewError && err.status === 429); checks++;
+      const nextDay = await submitAccountClaim(input, 'claim', db, new Date(Date.now() + 86400000));
+      check(nextDay.reference !== claim1.reference, 'Daily allowance resets without reviving revoked credentials');
+      const boundaryInput = { ...input, admissionNumber: '003', initials: 'OL', username: key + '-boundary' };
+      await submitAccountClaim(boundaryInput, 'claim', db, new Date('2026-11-02T21:59:58Z'));
+      await submitAccountClaim({ ...boundaryInput, password: 'different-password' }, 'claim', db, new Date('2026-11-02T21:59:59Z'));
+      await assert.rejects(submitAccountClaim({ ...boundaryInput, password: 'third-password' }, 'claim', db, new Date('2026-11-02T21:59:59.500Z')), (err: unknown) => err instanceof AccountReviewError && err.status === 429); checks++;
+      check(!!(await submitAccountClaim({ ...boundaryInput, password: 'new-day-password' }, 'claim', db, new Date('2026-11-02T22:00:00Z'))).reference, 'Daily limit resets at midnight in South Africa, not midnight UTC');
+      check((await tx.select().from(refreshTokens).where(and(eq(refreshTokens.accountId, active!.id), eq(refreshTokens.accountType, 'learner')))).length === 0);
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+      for (const [method, original] of originals) (db as any)[method] = original;
+    }
+    throw rollback;
+  }); } catch (error) { if (error !== rollback) throw error; }
+  console.log(`Account review checks passed: ${checks} service/HTTP assertions. Claims, references, scope, daily limits, restricted reads, selected credentials and session revocation. All fixtures rolled back.`);
+}
+run().then(() => pool.end()).catch(async error => { console.error(error); await pool.end(); process.exitCode = 1; });

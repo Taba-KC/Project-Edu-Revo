@@ -215,6 +215,18 @@ export async function sendHomework(caller: AuthPayload, lessonId: number, data: 
  * Resolve the question's lesson and authorize that lesson before persisting the replacement
  * memo.
  */
+/** Authorize the saved question before supplying context to answer generation. */
+export async function getSavedQuestionMemoContext(caller: AuthPayload, questionId: number, database: Database = db) {
+ return database.transaction(async tx => {
+  const [question] = await tx.select({ body: questions.body, memo: questions.memo, conceptId: questions.conceptId, lessonId: homework.lessonId }).from(questions).innerJoin(homework, eq(homework.id, questions.homeworkId)).where(eq(questions.id, questionId));
+  if (!question) throw new TeacherError('Question not found.', 404);
+  const context = await getHomeworkContext(caller, question.lessonId, tx);
+  const concept = context.concepts.find(item => item.id === question.conceptId);
+  if (!concept) throw new TeacherError('The question must test a concept from this lesson.');
+  return { ...question, gradeNumber: context.gradeNumber, conceptName: concept.name };
+ });
+}
+
 export async function updateQuestionMemo(caller: AuthPayload, questionId: number, memo: string, database: Database = db) {
  return database.transaction(async tx=>{
   await tx.execute(sql`select pg_advisory_xact_lock(7411, 0)`);
